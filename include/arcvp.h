@@ -19,10 +19,10 @@ class ArcVP {
   AVCodec *audioCodec = nullptr;
   AVCodecContext *videoCodecContext = nullptr;
   AVCodecContext *audioCodecContext = nullptr;
-        AVCodecParameters *videoCodecParams = nullptr;
-  AVCodecParameters* audioCodecParams = nullptr;
+  AVCodecParameters *videoCodecParams = nullptr;
+  AVCodecParameters *audioCodecParams = nullptr;
 
-  ArcVP()=default;
+  ArcVP() = default;
 
 public:
   ArcVP(const ArcVP &) = delete;

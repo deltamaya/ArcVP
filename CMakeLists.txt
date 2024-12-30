@@ -20,7 +20,8 @@ include_directories(${FFMPEG_INCLUDE_DIRS} "lib/imgui"  "lib/imgui/backends"  ".
 link_directories(${FFMPEG_LIBRARY_DIRS})
 
 # Define Executable
-add_executable(ArcVP main.cc ${IMGUI_SRC} "lib/imgui/backends/imgui_impl_glfw.cpp" "lib/imgui/backends/imgui_impl_opengl3.cpp")
+add_executable(ArcVP main.cc ${IMGUI_SRC} "lib/imgui/backends/imgui_impl_glfw.cpp" "lib/imgui/backends/imgui_impl_opengl3.cpp"
+        include/arcvp.h)
 #target_compile_options(ArcVP PRIVATE -fsanitize=address)
 target_link_directories(ArcVP PRIVATE "C:\\Program Files\\LLVM\\lib\\clang\\19\\lib\\windows")
 
