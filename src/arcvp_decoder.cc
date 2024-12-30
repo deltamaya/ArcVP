@@ -26,7 +26,5 @@ void ArcVP::decoderFunc() {
     }else if(packet->stream_index==audioStream->index) {
       audioPacketQueue.push(packet);
     }
-    av_packet_unref(packet);
-
   }
 }

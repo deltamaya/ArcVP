@@ -96,8 +96,8 @@ int main(int, char**)
     // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
     // - Our Emscripten build process allows embedding fonts to be accessible at runtime from the "fonts/" folder. See Makefile.emscripten for details.
     // io.Fonts->AddFontDefault();
-    const ImFont *font=io.Fonts->AddFontFromFileTTF(R"(C:\Windows\Fonts\CascadiaCode.ttf)", 18.0f);
-    IM_ASSERT(font != nullptr);
+    // const ImFont *font=io.Fonts->AddFontFromFileTTF(R"(C:\Windows\Fonts\CascadiaCode.ttf)", 18.0f);
+    // IM_ASSERT(font != nullptr);
 
     // Our state
     bool show_demo_window = true;
@@ -141,7 +141,6 @@ int main(int, char**)
             static int counter = 0;
 
             ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
             ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
             ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
             ImGui::Checkbox("Another Window", &show_another_window);

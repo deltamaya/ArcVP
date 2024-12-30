@@ -9,6 +9,7 @@
 #include <thread>
 #include <vector>
 #include <queue>
+#include <optional>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -34,7 +35,7 @@ class ArcVP {
   std::unique_ptr<std::thread> decoderThread = nullptr, playerThread = nullptr;
   std::queue<AVPacket*> videoPacketQueue,audioPacketQueue;
 
-  std::vector<uint8_t> videoFrameBuffer, audioFrameBuffer;
+  AVFrame* videoFrameBuffer, *audioFrameBuffer;
 
   ArcVP() = default;
 
@@ -42,13 +43,21 @@ class ArcVP {
   void playerFunc();
   void setupAudioDevice();
 
+  std::optional<AVFrame*> tryReceiveVideoFrame();
+    std::optional<AVFrame*> tryReceiveAudioFrame();
+
 public:
   ArcVP(const ArcVP &) = delete;
   ArcVP &operator=(const ArcVP &) = delete;
 
   static bool init() {
-    getInstance().decoderThread = std::make_unique<std::thread>(decoderFunc);
-    getInstance().playerThread = std::make_unique<std::thread>(playerFunc);
+    getInstance().decoderThread = std::make_unique<std::thread>([] {
+      getInstance().decoderFunc();
+    });
+    getInstance().playerThread = std::make_unique<std::thread>([] {
+      getInstance().playerFunc();
+
+    });
     return true;
   }
   static bool destroy() {

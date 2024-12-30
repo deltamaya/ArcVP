@@ -3,9 +3,23 @@ project(ArcVP)
 set(CMAKE_CXX_STANDARD 20)
 file(GLOB IMGUI_SRC "lib/imgui/*")
 
-set(FFMPEG_INCLUDE_DIRS "D:/FFmpeg/include")
-set(FFMPEG_LIBRARY_DIRS "D:/FFmpeg/lib")
 
+if(WIN32)
+    message(STATUS "Configuring for Windows...")
+    # Specify paths for FFmpeg on Windows
+    set(FFMPEG_INCLUDE_DIRS "D:/FFmpeg/include") # Adjust path
+    set(FFMPEG_LIBRARY_DIRS "D:/FFmpeg/lib")       # Adjust path
+elseif(APPLE)
+    message(STATUS "Configuring for macOS...")
+    # On macOS, use pkg-config for FFmpeg (assuming Homebrew installation)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale libswresample)
+elseif(UNIX)
+    message(STATUS "Configuring for Linux...")
+    # On Linux, use pkg-config for FFmpeg
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale libswresample)
+endif()
 # Find packages
 # find_package(PkgConfig REQUIRED)
 find_package(OpenGL REQUIRED)
@@ -25,9 +39,9 @@ add_executable(ArcVP main.cc
         "lib/imgui/backends/imgui_impl_opengl3.cpp"
         include/arcvp.h
         src/arcvp_openclose.cc
-        src/arcvp_decoder.cc)
+        src/arcvp_decoder.cc
+        src/arcvp_player.cc)
 #target_compile_options(ArcVP PRIVATE -fsanitize=address)
-target_link_directories(ArcVP PRIVATE "C:\\Program Files\\LLVM\\lib\\clang\\19\\lib\\windows")
 
 #target_link_options(ArcVP PRIVATE /wholearchive:clang_rt.asan_dynamic_runtime_thunk-x86_64.lib)
 # Link Libraries
