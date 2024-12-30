@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.28)
 project(ArcVP)
 set(CMAKE_CXX_STANDARD 20)
 file(GLOB IMGUI_SRC "lib/imgui/*")
-file(GLOB ArcVP_SRC "./src/*.cc")
 
 set(FFMPEG_INCLUDE_DIRS "D:/FFmpeg/include")
 set(FFMPEG_LIBRARY_DIRS "D:/FFmpeg/lib")
@@ -20,8 +19,13 @@ include_directories(${FFMPEG_INCLUDE_DIRS} "lib/imgui"  "lib/imgui/backends"  ".
 link_directories(${FFMPEG_LIBRARY_DIRS})
 
 # Define Executable
-add_executable(ArcVP main.cc ${IMGUI_SRC} "lib/imgui/backends/imgui_impl_glfw.cpp" "lib/imgui/backends/imgui_impl_opengl3.cpp"
-        include/arcvp.h)
+add_executable(ArcVP main.cc
+        ${IMGUI_SRC}
+        "lib/imgui/backends/imgui_impl_glfw.cpp"
+        "lib/imgui/backends/imgui_impl_opengl3.cpp"
+        include/arcvp.h
+        src/arcvp_openclose.cc
+        src/arcvp_decoder.cc)
 #target_compile_options(ArcVP PRIVATE -fsanitize=address)
 target_link_directories(ArcVP PRIVATE "C:\\Program Files\\LLVM\\lib\\clang\\19\\lib\\windows")
 
