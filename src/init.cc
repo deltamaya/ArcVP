@@ -3,6 +3,9 @@
 //
 #include "imgui.h"
 #include "video-reader.hh"
+extern "C"{
+#include <libavutil/error.h>
+  }
 
 bool VideoReader::open(const char *filename) {
   formatContext_ = avformat_alloc_context();
@@ -54,7 +57,6 @@ bool VideoReader::open(const char *filename) {
         SDL_CreateTexture(curRenderer, SDL_PIXELFORMAT_YV12,
                           SDL_TEXTUREACCESS_STREAMING, frameWidth, frameHeight);
     // SDL_GetRendererOutputSize(curRenderer, &width, &height);
-    ImGuiSDL::Initialize(curRenderer, width, height);
 
     destRect_ = {0, 0, width, height};
   }

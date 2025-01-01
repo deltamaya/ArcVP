@@ -2,75 +2,80 @@
 // Created by maya delta on 2024/12/30.
 //
 
-#include "arcvp.h"
+#include <GLFW/glfw3.h>
 
 #include <iostream>
 
-extern "C"{
+#include "arcvp.h"
+
+extern "C" {
 #include <libavutil/imgutils.h>
 }
-using std::cerr;
-// Function to convert YUV AVFrame to RGB buffer
-AVFrame* ConvertYUVToRGB(AVFrame* yuvFrame, int width, int height) {
-  // Step 1: Allocate RGB buffer
-  int rgbBufferSize =av_image_get_buffer_size(AV_PIX_FMT_RGB24,width,height,1);
-  unsigned char* buffer = (unsigned char*)av_malloc(rgbBufferSize);
-  if (!buffer) {
-    std::cerr << "Failed to allocate RGB buffer." << std::endl;
-    return nullptr;
-  }
-  AVFrame* rgbFrame = av_frame_alloc();
-  if (!rgbFrame) {
-    std::cerr << "Failed to allocate RGB frame." << std::endl;
-    return nullptr;
-  }
-  av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, buffer, AV_PIX_FMT_RGB24, width, height, 1);
+using std::cerr,std::cout;
 
-  // Step 3: Initialize SwsContext for YUV to RGB conversion
-  SwsContext* swsCtx = sws_getContext(
-      yuvFrame->width, yuvFrame->height, (AVPixelFormat)yuvFrame->format,  // Source format and dimensions
-      width, height, AV_PIX_FMT_RGB24,                // Destination format and dimensions
-      SWS_BILINEAR,                                   // Scaling algorithm
-      nullptr, nullptr, nullptr
-  );
-  if (!swsCtx) {
-    std::cerr << "Failed to create SwsContext." << std::endl;
-    return nullptr;
-  }
-  // Step 4: Perform the conversion
-  sws_scale(
-      swsCtx,
-      yuvFrame->data, yuvFrame->linesize,  // Source data and line sizes
-      0, height,                          // Source slice (start and height)
-      rgbFrame->data, rgbFrame->linesize  // Destination data and line sizes
-  );
 
-  // Step 5: Cleanup
-  sws_freeContext(swsCtx);
 
-  // Return the RGB buffer
-  return rgbFrame;
+uint64_t getFramePresentTime(AVFrame *frame, AVRational timeBase) {
+  return (frame->pts * timeBase.num) * 1000. / timeBase.den;
 }
 
+// player thread
 void ArcVP::playerFunc() {
+  while (true) {
+    std::unique_lock lock{lkPlaybackEvent};
+    cvEvent.wait(lock, [this] { return !playbackEvents.empty(); });
+    auto request = playbackEvents.front();
+    playbackEvents.pop();
+    if (request == 0) {
+      // prepare the next rgb video frame and present time
+      cout<<"Requesting video frame\n";
+      auto ok = tryReceiveVideoFrame();
+      while (!ok) {
+        auto pkt = videoPacketQueue.front();
+        avcodec_send_packet(videoCodecContext, pkt);
+        av_packet_unref(pkt);
+        videoPacketQueue.pop();
+        ok = tryReceiveVideoFrame();
+      }
+      nextVideoFramePresentTimeMs =
+          getFramePresentTime(nextVideoFrame, videoStream->time_base);
+    } else if (request == 1) {
 
-}
-
-std::optional<AVFrame*> ArcVP::tryReceiveVideoFrame() {
-  AVFrame*frame=nullptr;
-  int ret=avcodec_receive_frame(videoCodecContext,frame);
-  if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-    return std::nullopt;
+    }
   }
-  return frame;
 }
 
+bool ArcVP::getNextFrame() {
+  if(curVideoFrame->pts==AV_NOPTS_VALUE) {
+    bool ok=tryReceiveVideoFrame();
+    while(!ok) {
+      auto pkt = videoPacketQueue.front();
+      avcodec_send_packet(videoCodecContext, pkt);
+      av_packet_unref(pkt);
+      videoPacketQueue.pop();
+      ok=tryReceiveVideoFrame();
+    }
+    // curVideoFrame will be a valid frame here
 
-std::optional<AVFrame*> ArcVP::tryReceiveAudioFrame() {
-  AVFrame*frame=nullptr;
-  int ret=avcodec_receive_frame(audioCodecContext,frame);
-  if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-    return std::nullopt;
   }
-  return frame;
+
+  // sendPresentVideoEvent();
+  return ret;
 }
+
+// this function will unref the curVideoFrame
+bool ArcVP::tryReceiveVideoFrame() {
+  int ret = avcodec_receive_frame(videoCodecContext, curVideoFrame);
+  if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+    return false;
+  }
+  return true;
+}
+
+// AVFrame *ArcVP::tryReceiveAudioFrame() {
+//   int ret = avcodec_receive_frame(audioCodecContext, curAudioFrame);
+//   if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+//     return nullptr;
+//   }
+//   return curAudioFrame;
+// }

@@ -58,7 +58,6 @@ bool VideoReader::setSize(const int width, const int height) {
     SDL_DestroyRenderer(curRenderer);
   // Recreate renderer and texture
   curRenderer = SDL_CreateRenderer(curWindow, -1, SDL_RENDERER_ACCELERATED);
-  ImGuiSDL::Initialize(curRenderer, width, height);
   curTexture_ = SDL_CreateTexture(curRenderer,
                                   SDL_PIXELFORMAT_YV12,
                                   SDL_TEXTUREACCESS_STREAMING,

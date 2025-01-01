@@ -7,9 +7,13 @@
 
 #include <memory>
 #include <thread>
+#include <utility>
 #include <vector>
 #include <queue>
 #include <optional>
+#include <condition_variable>
+#include <semaphore>
+#include <functional>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -33,42 +37,47 @@ class ArcVP {
   AVStream*subtitleStream = nullptr;
 
   std::unique_ptr<std::thread> decoderThread = nullptr, playerThread = nullptr;
-  std::queue<AVPacket*> videoPacketQueue,audioPacketQueue;
+  std::queue<AVPacket*> videoPacketQueue{},audioPacketQueue{};
 
-  AVFrame* videoFrameBuffer, *audioFrameBuffer;
+  std::mutex lkPlaybackEvent{};
+  std::condition_variable cvEvent;
+  std::queue<int> playbackEvents{};
+  AVFrame* curVideoFrame=nullptr;
 
-  ArcVP() = default;
+  ArcVP() {
+    curVideoFrame=av_frame_alloc();
+  }
 
   void decoderFunc();
   void playerFunc();
   void setupAudioDevice();
 
-  std::optional<AVFrame*> tryReceiveVideoFrame();
-    std::optional<AVFrame*> tryReceiveAudioFrame();
+ bool tryReceiveVideoFrame();
+  bool tryReceiveAudioFrame();
 
 public:
+
   ArcVP(const ArcVP &) = delete;
   ArcVP &operator=(const ArcVP &) = delete;
 
-  static bool init() {
-    getInstance().decoderThread = std::make_unique<std::thread>([] {
-      getInstance().decoderFunc();
+  static bool start() {
+    instance().decoderThread = std::make_unique<std::thread>([] {
+      instance().decoderFunc();
     });
-    getInstance().playerThread = std::make_unique<std::thread>([] {
-      getInstance().playerFunc();
-
+    instance().playerThread = std::make_unique<std::thread>([] {
+      instance().playerFunc();
     });
     return true;
   }
   static bool destroy() {
-    getInstance().decoderThread->join();
-    getInstance().decoderThread = nullptr;
-    getInstance().playerThread->join();
-    getInstance().playerThread = nullptr;
+    instance().decoderThread->join();
+    instance().decoderThread = nullptr;
+    instance().playerThread->join();
+    instance().playerThread = nullptr;
     return true;
   }
 
-  static ArcVP &getInstance() {
+  static ArcVP &instance() {
     static ArcVP instance;
     return instance;
   }
@@ -82,6 +91,24 @@ public:
   bool setPlaybackSpeed();
 
   bool seek(uint64_t tick);
+
+  void sendPresentVideoEvent() {
+    std::unique_lock lock{lkPlaybackEvent};
+    playbackEvents.push(0);
+    cvEvent.notify_one();
+  }
+  void sendPresentAudioEvent() {
+    std::unique_lock lock{lkPlaybackEvent};
+    playbackEvents.push(1);
+    cvEvent.notify_one();
+  }
+
+  uint64_t nextVideoFramePresentTimeMs = 0;
+  bool getNextFrame();
+  [[nodiscard]] const AVFrame* getCurFrame()const {
+    return curVideoFrame;
+  }
+
 };
 
 #endif // ARCVP_H

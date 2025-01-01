@@ -75,7 +75,6 @@ void VideoReader::controlPanel() {
       int width, height;
       SDL_GetWindowSize(curWindow, &width, &height);
       SDL_RenderSetLogicalSize(curRenderer, width, height);
-      ImGuiSDL::Initialize(curRenderer, width, height);
       spdlog::info("default screen thread started");
     }
     ImGui::End();

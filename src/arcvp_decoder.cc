@@ -8,10 +8,15 @@
 #include <iostream>
 
 using std::cout;
+using namespace std::chrono;
 
 void ArcVP::decoderFunc() {
-  AVPacket*packet=av_packet_alloc();
   while(true) {
+    if(!formatContext) {
+      std::this_thread::sleep_for(50ms);
+      continue;
+    }
+    AVPacket*packet=av_packet_alloc();
     int ret=av_read_frame(formatContext,packet);
     if(ret!=0) {
       if (ret == AVERROR_EOF) {

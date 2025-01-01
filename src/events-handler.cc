@@ -75,6 +75,9 @@ bool VideoReader::handleEvent(const SDL_Event &event) {
       if (!playbackThread_) {
         std::unique_lock lkWindow{mutexWindow_};
         SDL_RenderClear(curRenderer);
+        // Start new frame for ImGui
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
         controlPanel();
         ImGui::Render();
