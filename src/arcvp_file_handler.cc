@@ -84,6 +84,8 @@ bool ArcVP::open(const char* filename){
 			spdlog::error("Unable to open video codec: {}", av_err2str(ret));
 			return false;
 		}
+		this->width=videoCodecParams->width;
+		this->height=videoCodecParams->height;
 	}
 
 	if (hasAudio) {
@@ -117,4 +119,21 @@ bool ArcVP::open(const char* filename){
 	this->audioCodecContext = audioCodecContext;
 	spdlog::info("Opened file '{}'", filename);
 	return true;
+}
+
+void ArcVP::close(){
+	this->formatContext = nullptr;
+
+	this->videoStream = nullptr;
+	this->videoCodec = nullptr;
+	this->videoCodecParams = nullptr;
+	this->videoStreamIndex = -1;
+	this->videoCodecContext = nullptr;
+
+	this->audioStream = nullptr;
+	this->audioCodec = nullptr;
+	this->audioCodecParams = nullptr;
+	this->audioStreamIndex = -1;
+	this->audioCodecContext = nullptr;
+	spdlog::info("Closed Input");
 }

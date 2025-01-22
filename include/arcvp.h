@@ -25,34 +25,57 @@ extern "C" {
 }
 
 class ArcVP{
-	const AVFormatContext *formatContext = nullptr;
-	const AVCodec *videoCodec = nullptr;
-	const AVCodec *audioCodec = nullptr;
-	 AVCodecContext *videoCodecContext = nullptr;
-	 AVCodecContext *audioCodecContext = nullptr;
-	const AVCodecParameters *videoCodecParams = nullptr;
-	const AVCodecParameters *audioCodecParams = nullptr;
-	std::unique_ptr<std::thread> decodeThread=nullptr,playbackThread=nullptr;
+	AVFormatContext* formatContext = nullptr;
+	const AVCodec* videoCodec = nullptr;
+	const AVCodec* audioCodec = nullptr;
+	AVCodecContext* videoCodecContext = nullptr;
+	AVCodecContext* audioCodecContext = nullptr;
+	const AVCodecParameters* videoCodecParams = nullptr;
+	const AVCodecParameters* audioCodecParams = nullptr;
+	std::unique_ptr<std::thread> decodeThread = nullptr, playbackThread = nullptr;
 	std::queue<AVPacket *> videoPacketQueue, audioPacketQueue;
 
-	const AVStream* videoStream=nullptr,*audioStream=nullptr;
-	int videoStreamIndex=-1,audioStreamIndex=-1;
+	const AVStream *videoStream = nullptr, *audioStream = nullptr;
+	int videoStreamIndex = -1, audioStreamIndex = -1;
+
+
+	std::vector<std::uint8_t>displayBuffer,idleBuffer;
+	std::mutex mtx;
+
+
+	int width=-1,height=-1;
+	int durationMilli=-1;
+
+	void decodeThreadBody();
+	void playbackThreadBody();
 
 	void setupDecodeThread();
+
 	void setupPlaybackThread();
 
 public:
+	bool open(const char*);
 
-	bool open(const char *filename);
 	void close();
 
 	void startPlayback();
+
 	void pause();
 
-	void seekTo(std::int64_t seekPlayTime);
+	void seekTo(std::int64_t);
 
 	void speedUp();
+
 	void speedDown();
+
+	std::tuple<int,int> getWH(){
+		return std::make_tuple(width,height);
+	}
 };
+
+enum ArcVPEvent{
+	ARCVP_NEXTFRAME_EVENT=SDL_USEREVENT+1,
+};
+
 
 #endif //ARCVP_H
