@@ -96,6 +96,8 @@ public:
 
 enum ArcVPEvent{
 	ARCVP_NEXTFRAME_EVENT = SDL_USEREVENT + 1,
+	ARCVP_FINISH_EVENT,
+
 };
 
 

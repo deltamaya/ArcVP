@@ -49,7 +49,6 @@ SDL_Texture* videoTexture = nullptr;
 AVFrame* frame = nullptr;
 
 
-// 窗口大小改变时的处理
 void handleResize(){
 	SDL_GetWindowSize(window, &state.window_width, &state.window_height);
 	calculateDisplayRect();
@@ -118,7 +117,8 @@ int main(){
 	SDL_Color textColor = {255, 255, 255, 0};
 	SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), textColor);
 
-	arc.open("test.mp4");
+	arc.open("test5s.mp4");
+
 	auto [width,height] = arc.getWH();
 	spdlog::info("w: {}, h: {}", width, height);
 	state.src_width = width;
@@ -170,6 +170,9 @@ int main(){
 						// spdlog::debug("frame pointer: {}",(void*)frame);
 						presentFrame(frame);
 					}
+					break;
+				case ARCVP_FINISH_EVENT:
+					spdlog::debug("play finish");
 					break;
 				default:
 					break;

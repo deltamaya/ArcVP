@@ -15,6 +15,12 @@ void pushNextFrameEvent(void* data){
 	SDL_PushEvent(&event);
 }
 
+void pushFinishEvent(){
+	SDL_Event event;
+	event.type = ARCVP_FINISH_EVENT;
+	SDL_PushEvent(&event);
+}
+
 
 void ArcVP::startPlayback(){
 	SDL_GetDefaultAudioInfo(&audioDeviceName, &audioSpec, false);
@@ -26,22 +32,32 @@ void ArcVP::startPlayback(){
 	// demux all packets from the format context
 	while (true) {
 		AVPacket* pkt = av_packet_alloc();
-		if (av_read_frame(formatContext, pkt) == 0) {
-			if (pkt->stream_index == videoStreamIndex) {
-				videoPacketQueue.push(pkt);
-			}
-			else if (pkt->stream_index == audioStreamIndex) {
-				audioPacketQueue.push(pkt);
-			}
-			else {
-				spdlog::warn("Unknown packet type: {}", pkt->stream_index);
-			}
-		}
-		else {
-			av_packet_free(&pkt);
+		if (!pkt) {
+			spdlog::error("Failed to allocate AVPacket");
 			break;
 		}
+
+		int ret = av_read_frame(formatContext, pkt);
+		if (ret < 0) {
+			av_packet_free(&pkt);
+			if (ret == AVERROR_EOF) {
+				break;
+			} else {
+				spdlog::error("Error reading frame: {}", av_err2str(ret));
+				break;
+			}
+		}
+
+		if (pkt->stream_index == videoStreamIndex) {
+			videoPacketQueue.push(pkt);
+		} else if (pkt->stream_index == audioStreamIndex) {
+			audioPacketQueue.push(pkt);
+		} else {
+			spdlog::warn("Unknown packet index: {}", pkt->stream_index);
+			av_packet_free(&pkt);
+		}
 	}
+
 	spdlog::debug("video packet queue size: {}", videoPacketQueue.size());
 	spdlog::debug("audio packet queue size: {}", audioPacketQueue.size());
 
@@ -51,28 +67,38 @@ void ArcVP::startPlayback(){
 	}
 }
 
-bool tryReceiveFrame(AVCodecContext* ctx, AVFrame* frame){
-	int ret = avcodec_receive_frame(ctx, frame);
-	if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-		return false;
-	}
-	if (ret < 0) {
-		spdlog::error("Unable to receive video frame: {}", av_err2str(ret));
-		return false;
-	}
-	return true;
-}
-
 void ArcVP::decodeThreadBody(){
 	auto start = system_clock::now();
 	auto timebase = this->getTimebase();
+	int cnt=0;
 	while (this->running.load()) {
 		AVFrame* frame = av_frame_alloc();
-		while (!tryReceiveFrame(videoCodecContext, frame)) {
-			auto pkt = videoPacketQueue.front();
-			videoPacketQueue.pop();
-			avcodec_send_packet(videoCodecContext, pkt);
-			av_packet_free(&pkt);
+		while(true) {
+			int ret=avcodec_receive_frame(videoCodecContext, frame);;
+			if(ret==AVERROR(EAGAIN)) {
+				if(videoPacketQueue.empty()) {
+					spdlog::debug("decode EOF");
+					pushFinishEvent();
+					return;
+				}
+				auto pkt = videoPacketQueue.front();
+				videoPacketQueue.pop();
+				ret=avcodec_send_packet(videoCodecContext, pkt);
+				if(ret<0) {
+					spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
+				}
+				av_packet_free(&pkt);
+			}else if(ret==AVERROR_EOF) {
+				pushFinishEvent();
+				av_frame_free(&frame);
+				spdlog::debug("decode EOF");
+				return;
+			}else if(ret==0) {
+				break;
+			}else {
+				spdlog::error("Unable to receive video frame: {}", av_err2str(ret));
+				av_frame_free(&frame);
+			}
 		}
 		int pTimeMilli = frame->pts * timebase.num * 1000. / timebase.den;
 
@@ -139,18 +165,35 @@ void audioCallback(void* userdata, Uint8* stream, int len){
 		memset(stream,0,len);
 		return;
 	}
+
 	while (len > 0) {
 		int bytesCopied = 0;
 		if (pos >= audioBuffer.size()) {
 			/* We have already sent all our data; get more */
-			pos -= audioBuffer.size();
-			audioBuffer.clear();
-			while (!tryReceiveFrame(arc->audioCodecContext, frame)) {
-				auto pkt = arc->audioPacketQueue.front();
-				arc->audioPacketQueue.pop();
-				avcodec_send_packet(arc->audioCodecContext, pkt);
-				av_packet_free(&pkt);
+			while(true) {
+				int ret=avcodec_receive_frame(arc->audioCodecContext, frame);;
+				if(ret==AVERROR(EAGAIN)) {
+					if(arc->audioPacketQueue.empty()) {
+						memset(stream,0,len);
+						return;
+					}
+					auto pkt = arc->audioPacketQueue.front();
+					arc->audioPacketQueue.pop();
+					avcodec_send_packet(arc->audioCodecContext, pkt);
+					av_packet_free(&pkt);
+				}else if(ret==AVERROR_EOF) {
+					pushFinishEvent();
+					av_frame_free(&frame);
+					spdlog::debug("decode EOF");
+					return;
+				}else if(ret==0) {
+					break;
+				}else {
+					spdlog::error("Unable to receive video frame: {}", av_err2str(ret));
+					av_frame_free(&frame);
+				}
 			}
+			pos -= audioBuffer.size();
 			arc->resampleAudioFrame(frame,audioBuffer);
 		}
 		bytesCopied = std::min(audioBuffer.size() - pos, static_cast<std::size_t>( len ));
