@@ -11,32 +11,82 @@ typedef struct VideoState{
 	SDL_Rect display_rect; // 显示区域
 } VideoState;
 
+
+VideoState state = {
+	.window_width = 1280,
+	.window_height = 720
+};
+
 // 计算保持宽高比的显示区域
-void calculateDisplayRect(VideoState* state){
-	float aspect_ratio = ( float )state->src_width / state->src_height;
-	float window_aspect_ratio = ( float )state->window_width / state->window_height;
+void calculateDisplayRect(){
+	float aspect_ratio = ( float )state.src_width / state.src_height;
+	float window_aspect_ratio = ( float )state.window_width / state.window_height;
 
 	if (aspect_ratio > window_aspect_ratio) {
 		// 视频比窗口更宽，以窗口宽度为基准
-		state->display_rect.w = state->window_width;
-		state->display_rect.h = ( int )(state->window_width / aspect_ratio);
-		state->display_rect.x = 0;
-		state->display_rect.y = (state->window_height - state->display_rect.h) / 2;
+		state.display_rect.w = state.window_width;
+		state.display_rect.h = ( int )(state.window_width / aspect_ratio);
+		state.display_rect.x = 0;
+		state.display_rect.y = (state.window_height - state.display_rect.h) / 2;
 	}
 	else {
 		// 视频比窗口更高，以窗口高度为基准
-		state->display_rect.h = state->window_height;
-		state->display_rect.w = ( int )(state->window_height * aspect_ratio);
-		state->display_rect.x = (state->window_width - state->display_rect.w) / 2;
-		state->display_rect.y = 0;
+		state.display_rect.h = state.window_height;
+		state.display_rect.w = ( int )(state.window_height * aspect_ratio);
+		state.display_rect.x = (state.window_width - state.display_rect.w) / 2;
+		state.display_rect.y = 0;
 	}
 }
 
+
+
+SDL_Window* window = nullptr;
+
+SDL_Renderer* renderer = nullptr;
+
+SDL_Texture* videoTexture = nullptr;
+
+AVFrame* frame = nullptr;
+
+
 // 窗口大小改变时的处理
-void handleResize(SDL_Window* window, VideoState* state){
-	SDL_GetWindowSize(window, &state->window_width, &state->window_height);
-	calculateDisplayRect(state);
+void handleResize(){
+	SDL_GetWindowSize(window, &state.window_width, &state.window_height);
+	calculateDisplayRect();
 }
+
+
+void presentFrame(AVFrame* frame){
+	SDL_UpdateYUVTexture(videoTexture, nullptr,
+	                     frame->data[0], frame->linesize[0], // Y plane
+	                     frame->data[1], frame->linesize[1], // U plane
+	                     frame->data[2], frame->linesize[2]); // V plane
+	SDL_RenderClear(renderer);
+	SDL_RenderCopy(renderer, videoTexture, nullptr, &state.display_rect);
+	SDL_RenderPresent(renderer);
+}
+
+
+void handleKeyDown(SDL_Window* window, ArcVP&arc, const SDL_Event&event){
+	static bool fullscreen = false;
+	switch (event.key.keysym.sym) {
+		case SDLK_SPACE:
+			arc.togglePause();
+			break;
+		case SDLK_f:
+			fullscreen = !fullscreen;
+			SDL_SetWindowFullscreen(window, fullscreen);
+		 handleResize();
+			presentFrame(frame);
+			break;
+		default:
+			break;
+	}
+}
+
+ArcVP arc;
+
+
 
 int main(){
 	spdlog::set_level(spdlog::level::debug);
@@ -51,16 +101,11 @@ int main(){
 		return 1;
 	}
 
-	VideoState state = {
-		.window_width = 1280,
-		.window_height = 720
-	};
+	window = SDL_CreateWindow("Arc VP", SDL_WINDOWPOS_CENTERED,
+	                          SDL_WINDOWPOS_CENTERED, state.window_width, state.window_height,
+	                          SDL_WINDOW_RESIZABLE);
 
-	SDL_Window* window = SDL_CreateWindow("Arc VP", SDL_WINDOWPOS_CENTERED,
-	                                      SDL_WINDOWPOS_CENTERED, state.window_width, state.window_height,
-	                                      SDL_WINDOW_RESIZABLE);
-
-	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 	constexpr int fontSize = 50;
 
@@ -73,15 +118,14 @@ int main(){
 	SDL_Color textColor = {255, 255, 255, 0};
 	SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), textColor);
 
-	ArcVP arcvp;
-	arcvp.open("test.mp4");
-	auto [width,height] = arcvp.getWH();
+	arc.open("test.mp4");
+	auto [width,height] = arc.getWH();
 	spdlog::info("w: {}, h: {}", width, height);
 	state.src_width = width;
 	state.src_height = height;
 
 	SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, surface);
-	SDL_Texture* videoTexture =
+	videoTexture =
 			SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_STREAMING, state.src_width,
 			                  state.src_height);
 
@@ -94,9 +138,9 @@ int main(){
 	dstRect.h = surface->h;
 
 
-	handleResize(window, &state);
+	handleResize();
 
-	arcvp.startPlayback();
+	arc.startPlayback();
 
 
 	SDL_Event event;
@@ -108,30 +152,27 @@ int main(){
 					break;
 				case SDL_WINDOWEVENT:
 					if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
-						handleResize(window, &state);
+						handleResize();
+						presentFrame(frame);
 					}
-					// spdlog::debug("Window event");
+					else if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+						handleResize();
+						presentFrame(frame);
+					}
 					break;
 				case SDL_KEYDOWN:
-					if(event.key.keysym.sym==SDLK_SPACE) {
-						spdlog::debug("Space pressed");
-						arcvp.togglePause();
-					}
+					handleKeyDown(window, arc, event);
+					break;
 				case ARCVP_NEXTFRAME_EVENT:
 					if (event.type == ARCVP_NEXTFRAME_EVENT) {
-						auto frame = static_cast<AVFrame *>( event.user.data1 );
-						// spdlog::debug("frame pointer: {}",(void*)frame);
-						SDL_UpdateYUVTexture(videoTexture, nullptr,
-						                     frame->data[0], frame->linesize[0], // Y plane
-						                     frame->data[1], frame->linesize[1], // U plane
-						                     frame->data[2], frame->linesize[2]); // V plane
-						SDL_RenderClear(renderer);
-						SDL_RenderCopy(renderer, videoTexture, nullptr, &state.display_rect);
-						SDL_RenderPresent(renderer);
 						av_frame_free(&frame);
+						frame = static_cast<AVFrame *>( event.user.data1 );
+						// spdlog::debug("frame pointer: {}",(void*)frame);
+						presentFrame(frame);
 					}
 					break;
-				default: ;
+				default:
+					break;
 			}
 		}
 		SDL_Delay(10);

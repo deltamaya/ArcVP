@@ -76,7 +76,7 @@ void ArcVP::decodeThreadBody(){
 		}
 		int pTimeMilli = frame->pts * timebase.num * 1000. / timebase.den;
 
-		while(pause.load()) {
+		while(pause.load()&&running.load()) {
 			start = system_clock::now()-milliseconds(pTimeMilli);
 			std::this_thread::sleep_for(10ms);
 		}
@@ -133,7 +133,6 @@ void audioCallback(void* userdata, Uint8* stream, int len){
 	static std::vector<uint8_t> audioBuffer;
 	static AVFrame* frame = av_frame_alloc();
 	//    vr->audioSyncTo(bytesPlayed);
-	// spdlog::debug("Audio callback: total: {} len: {}", bytesPlayed, len);
 
 	// paused
 	if(arc->pause.load()) {
