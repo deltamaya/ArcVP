@@ -13,7 +13,6 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
-#include "imgui_sdl.h"
 #include <thread>
 
 extern "C" {

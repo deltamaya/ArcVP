@@ -1,135 +1,61 @@
-#include "backends/imgui_impl_opengl3.h"
-#include "backends/imgui_impl_sdl2.h"
-#include "imgui.h"
-#include "spdlog/spdlog.h"
-#include "video-reader.hh"
-#include <vector>
+#include "arcvp.h"
+#include <SDL_ttf.h>
 
-#include <iostream>
-#include <queue>
+int main(){
 
-extern "C" {
-#include <SDL2/SDL.h>
-#if defined(IMGUI_IMPL_OPENGL_ES2)
-#include <SDL_opengles2.h>
-#else
-#include <SDL_opengl.h>
-}
+	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+		spdlog::error("SDL_Init: {}", SDL_GetError());
+		return 1;
+	}
 
+	if (TTF_Init() == -1) {
+		spdlog::error("TTF_Init: {}", TTF_GetError());
+		return 1;
+	}
 
-#endif
+	SDL_Window* window=SDL_CreateWindow("Arc VP", SDL_WINDOWPOS_CENTERED,
+		SDL_WINDOWPOS_CENTERED,640,480,0);
 
-static const char *init() {
-  // Setup SDL
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0) {
-    spdlog::error("Unable to initialize SDL: {}", SDL_GetError());
-    std::exit(1);
-  }
+	SDL_Renderer*renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_ACCELERATED);
+	SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+	constexpr int fontSize=50;
 
-  // Decide GL+GLSL versions
-#if defined(IMGUI_IMPL_OPENGL_ES2)
-  // GL ES 2.0 + GLSL 100
-    const char* glsl_version = "#version 100";
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-#elif defined(__APPLE__)
-  // GL 3.2 Core + GLSL 150
-    const char* glsl_version = "#version 150";
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG); // Always required on Mac
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-#else
-  // GL 3.0 + GLSL 130
-  const char *glsl_version = "#version 130";
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-#endif
+	TTF_Font* font=TTF_OpenFont("C:/Windows/Fonts/CascadiaCode.ttf",fontSize);
+	if (!font) {
+		spdlog::error("Failed to load font: {}\n", TTF_GetError());
+		return 1;
+	}
+	std::string text="Hello, SDL!";
+	SDL_Color textColor={255,255,255,0};
+	SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), textColor);
+	SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
 
-  // From 2.0.18: Enable native IME.
-#ifdef SDL_HINT_IME_SHOW_UI
-  SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1");
-#endif
+	ArcVP arcvp;
+	arcvp.open("test.mp4");
+	bool running=true;
 
-  // Create window with graphics context
-  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-  SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-  return glsl_version;
-}
+	SDL_Rect dstRect;
+	dstRect.x = 50;
+	dstRect.y = 50;
+	dstRect.w = surface->w;
+	dstRect.h = surface->h;
 
-VideoReader vr;
+	while(running) {
+		SDL_Event event;
+		while(SDL_PollEvent(&event)) {
+			if(event.type==SDL_QUIT) {
+				running=false;
+			}
+			SDL_RenderClear(renderer);
+			SDL_RenderCopy(renderer, texture, nullptr, &dstRect);
+			SDL_RenderPresent(renderer);
+		}
+	}
 
 
-int main(int argc, char *argv[]) {
-  spdlog::set_level(spdlog::level::debug);
-  const char *glsl_version = init();
-  auto window_flags = static_cast<SDL_WindowFlags>(
-      SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-  SDL_Window *window = SDL_CreateWindow("ArcVP",
-                                        SDL_WINDOWPOS_CENTERED,
-                                        SDL_WINDOWPOS_CENTERED,
-                                        1280,
-                                        720,
-                                        window_flags);
-  if (window == nullptr) {
-    spdlog::error("Error: SDL_CreateWindow(): {}", SDL_GetError());
-    return -1;
-  }
-
-  SDL_GLContext gl_context = SDL_GL_CreateContext(window);
-  SDL_GL_MakeCurrent(window, gl_context);
-  SDL_GL_SetSwapInterval(1); // Enable vsync
-  // Setup Dear ImGui context
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  ImGuiIO &io = ImGui::GetIO();
-  (void) io;
-  io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-  // Setup Dear ImGui style
-  ImGui::StyleColorsDark();
-  //ImGui::StyleColorsLight();
-
-
-  // Setup Platform/Renderer backends
-  ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
-  ImGui_ImplOpenGL3_Init(glsl_version);
-  av_log_set_level(AV_LOG_DEBUG);
-  vr.setWindow(window);
-  vr.startDefaultScreen();
-  bool done = false;
-  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-  while (!done) {
-    if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) {
-      SDL_Delay(10);
-      continue;
-    }
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-      ImGui_ImplSDL2_ProcessEvent(&event);
-      if (vr.handleEvent(event)) {
-        done = true;
-        break;
-      }
-    }
-  }
-  vr.close();
-  spdlog::shutdown();
-  vr.quitDefaultScreen();
-  if (vr.decodeThread_ || vr.playbackThread_ || vr.defaultScreenThread_) {
-    std::cerr << "Shutting down error\n";
-  }
-  // Cleanup
-  ImGui_ImplOpenGL3_Shutdown();
-  ImGui_ImplSDL2_Shutdown();
-  ImGui::DestroyContext();
-  SDL_GL_DeleteContext(gl_context);
-  SDL_DestroyWindow(window);
-  SDL_Quit();
-  return 0;
+	SDL_DestroyTexture(texture);
+	TTF_CloseFont(font);
+	TTF_Quit();
+	SDL_Quit();
+	return 0;
 }

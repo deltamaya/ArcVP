@@ -3,7 +3,6 @@
 //
 #include "video-reader.hh"
 
-#include "portable-file-dialogs.h"
 
 bool VideoReader::firstVideoFrame = true;
 
