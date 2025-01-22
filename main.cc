@@ -41,7 +41,7 @@ void handleResize(SDL_Window* window, VideoState* state){
 int main(){
 	spdlog::set_level(spdlog::level::debug);
 
-	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS) != 0) {
 		spdlog::error("SDL_Init: {}", SDL_GetError());
 		return 1;
 	}
@@ -52,10 +52,8 @@ int main(){
 	}
 
 	VideoState state = {
-		.src_width = 1920, // 原始视频宽度
-		.src_height = 1080, // 原始视频高度
-		.window_width = 1280, // 初始窗口宽度
-		.window_height = 720 // 初始窗口高度
+		.window_width = 1280,
+		.window_height = 720
 	};
 
 	SDL_Window* window = SDL_CreateWindow("Arc VP", SDL_WINDOWPOS_CENTERED,
@@ -96,15 +94,13 @@ int main(){
 	dstRect.h = surface->h;
 
 
-
-	handleResize(window,&state);
+	handleResize(window, &state);
 
 	arcvp.startPlayback();
 
 
-
+	SDL_Event event;
 	while (running) {
-		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			switch (event.type) {
 				case SDL_QUIT:
@@ -114,27 +110,27 @@ int main(){
 					if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
 						handleResize(window, &state);
 					}
+					spdlog::debug("Window event");
 					break;
 				case ARCVP_NEXTFRAME_EVENT:
 					if (event.type == ARCVP_NEXTFRAME_EVENT) {
-						spdlog::debug("User event");
 						auto frame = static_cast<AVFrame *>( event.user.data1 );
+						spdlog::debug("frame pointer: {}",(void*)frame);
 						SDL_UpdateYUVTexture(videoTexture, nullptr,
 						                     frame->data[0], frame->linesize[0], // Y plane
 						                     frame->data[1], frame->linesize[1], // U plane
 						                     frame->data[2], frame->linesize[2]); // V plane
 						SDL_RenderClear(renderer);
-						// 使用计算好的显示区域进行渲染
 						SDL_RenderCopy(renderer, videoTexture, nullptr, &state.display_rect);
 						SDL_RenderPresent(renderer);
+						av_frame_free(&frame);
 					}
 					break;
 				default: ;
 			}
 		}
-		SDL_Delay(24);
+		SDL_Delay(10);
 	}
-
 
 	SDL_DestroyTexture(textTexture);
 	TTF_CloseFont(font);

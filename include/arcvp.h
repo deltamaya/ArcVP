@@ -38,29 +38,44 @@ class ArcVP{
 	const AVStream *videoStream = nullptr, *audioStream = nullptr;
 	int videoStreamIndex = -1, audioStreamIndex = -1;
 
+	std::atomic<bool> running,pause,finished;
+	std::vector<std::uint8_t> displayBuffer, idleBuffer;
+	std::mutex mtx{};
+	AVRational timebase{};
 
-	std::vector<std::uint8_t>displayBuffer,idleBuffer;
-	std::mutex mtx;
+	SDL_AudioDeviceID audioDeviceID=-1;
+	char* audioDeviceName=nullptr;
+	SDL_AudioSpec audioSpec{};
 
 
-	int width=-1,height=-1;
-	int durationMilli=-1;
+	int width = -1, height = -1;
+	int durationMilli = -1;
 
 	void decodeThreadBody();
-	void playbackThreadBody();
 
-	void setupDecodeThread();
-
-	void setupPlaybackThread();
+	bool setupAudioDevice(int);
 
 public:
+
+	bool resampleAudioFrame(AVFrame* frame, std::vector<uint8_t>&vec);
+	friend void audioCallback(void *userdata, Uint8 *stream, int len);
+
+	ArcVP(){
+		running.store(true);
+	}
+
+	~ArcVP(){
+		running.store(false);
+		decodeThread->join();
+	}
+
 	bool open(const char*);
 
 	void close();
 
 	void startPlayback();
 
-	void pause();
+	void togglePause();
 
 	void seekTo(std::int64_t);
 
@@ -68,13 +83,17 @@ public:
 
 	void speedDown();
 
-	std::tuple<int,int> getWH(){
-		return std::make_tuple(width,height);
+	std::tuple<int, int> getWH(){
+		return std::make_tuple(width, height);
+	}
+
+	AVRational getTimebase(){
+		return timebase;
 	}
 };
 
 enum ArcVPEvent{
-	ARCVP_NEXTFRAME_EVENT=SDL_USEREVENT+1,
+	ARCVP_NEXTFRAME_EVENT = SDL_USEREVENT + 1,
 };
 
 
