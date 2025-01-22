@@ -24,7 +24,6 @@ extern "C" {
 #include <libswresample/swresample.h>
 #include <libavutil/audio_fifo.h>
 #include <SDL2/SDL.h>
-
 }
 constexpr size_t VIDEO_PACKET_QUEUE_MAX_SIZE = 1024;
 constexpr size_t AUDIO_PACKET_QUEUE_MAX_SIZE = 1024;

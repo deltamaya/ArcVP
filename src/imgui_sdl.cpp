@@ -535,7 +535,7 @@ namespace ImGuiSDL
 		Texture* texture = new Texture();
 		texture->Surface = surface;
 		texture->Source = SDL_CreateTextureFromSurface(renderer, surface);
-		io.Fonts->TexID = (void*)texture;
+		io.Fonts->TexID = reinterpret_cast<ImTextureID>(texture);
 
 		CurrentDevice = new Device(renderer);
 	}
@@ -544,7 +544,7 @@ namespace ImGuiSDL
 	{
 		// Frees up the memory of the font texture.
 		ImGuiIO& io = ImGui::GetIO();
-		Texture* texture = static_cast<Texture*>(io.Fonts->TexID);
+		Texture* texture = reinterpret_cast<Texture*>(io.Fonts->TexID);
 		delete texture;
 
 		delete CurrentDevice;
@@ -633,11 +633,11 @@ namespace ImGuiSDL
 
 								if (isWrappedTexture)
 								{
-									DrawRectangle(bounding, static_cast<const Texture*>(drawCommand->TextureId), Color(v0.col), doHorizontalFlip, doVerticalFlip);
+									DrawRectangle(bounding, reinterpret_cast<const Texture*>(drawCommand->TextureId), Color(v0.col), doHorizontalFlip, doVerticalFlip);
 								}
 								else
 								{
-									DrawRectangle(bounding, static_cast<SDL_Texture*>(drawCommand->TextureId), Color(v0.col), doHorizontalFlip, doVerticalFlip);
+									DrawRectangle(bounding, reinterpret_cast<SDL_Texture*>(drawCommand->TextureId), Color(v0.col), doHorizontalFlip, doVerticalFlip);
 								}
 
 								i += 3;  // Additional increment to account for the extra 3 vertices we consumed.
@@ -653,7 +653,7 @@ namespace ImGuiSDL
 						{
 							// Currently we assume that any non rectangular texture samples the font texture. Dunno if that's what actually happens, but it seems to work.
 							assert(isWrappedTexture);
-							DrawTriangle(v0, v1, v2, static_cast<const Texture*>(drawCommand->TextureId));
+							DrawTriangle(v0, v1, v2, reinterpret_cast<const Texture*>(drawCommand->TextureId));
 						}
 					}
 				}
