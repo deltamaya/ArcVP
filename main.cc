@@ -110,12 +110,17 @@ int main(){
 					if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
 						handleResize(window, &state);
 					}
-					spdlog::debug("Window event");
+					// spdlog::debug("Window event");
 					break;
+				case SDL_KEYDOWN:
+					if(event.key.keysym.sym==SDLK_SPACE) {
+						spdlog::debug("Space pressed");
+						arcvp.togglePause();
+					}
 				case ARCVP_NEXTFRAME_EVENT:
 					if (event.type == ARCVP_NEXTFRAME_EVENT) {
 						auto frame = static_cast<AVFrame *>( event.user.data1 );
-						spdlog::debug("frame pointer: {}",(void*)frame);
+						// spdlog::debug("frame pointer: {}",(void*)frame);
 						SDL_UpdateYUVTexture(videoTexture, nullptr,
 						                     frame->data[0], frame->linesize[0], // Y plane
 						                     frame->data[1], frame->linesize[1], // U plane

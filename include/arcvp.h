@@ -39,7 +39,6 @@ class ArcVP{
 	int videoStreamIndex = -1, audioStreamIndex = -1;
 
 	std::atomic<bool> running,pause,finished;
-	std::vector<std::uint8_t> displayBuffer, idleBuffer;
 	std::mutex mtx{};
 	AVRational timebase{};
 
@@ -75,7 +74,10 @@ public:
 
 	void startPlayback();
 
-	void togglePause();
+	void togglePause(){
+		bool p=pause.load();
+		pause.store(!p);
+	}
 
 	void seekTo(std::int64_t);
 

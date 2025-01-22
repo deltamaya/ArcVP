@@ -75,7 +75,12 @@ void ArcVP::decodeThreadBody(){
 			av_packet_free(&pkt);
 		}
 		int pTimeMilli = frame->pts * timebase.num * 1000. / timebase.den;
-		// spdlog::debug("ptimemilli: {}", pTimeMilli);
+
+		while(pause.load()) {
+			start = system_clock::now()-milliseconds(pTimeMilli);
+			std::this_thread::sleep_for(10ms);
+		}
+
 		auto pTime = start + milliseconds(pTimeMilli);
 		std::this_thread::sleep_until(pTime);
 		pushNextFrameEvent(frame);
@@ -129,6 +134,12 @@ void audioCallback(void* userdata, Uint8* stream, int len){
 	static AVFrame* frame = av_frame_alloc();
 	//    vr->audioSyncTo(bytesPlayed);
 	// spdlog::debug("Audio callback: total: {} len: {}", bytesPlayed, len);
+
+	// paused
+	if(arc->pause.load()) {
+		memset(stream,0,len);
+		return;
+	}
 	while (len > 0) {
 		int bytesCopied = 0;
 		if (pos >= audioBuffer.size()) {
@@ -172,7 +183,7 @@ bool ArcVP::setupAudioDevice(int sampleRate){
 		spdlog::error("SDL_OpenAudio: {}", SDL_GetError());
 		return false;
 	}
-	// SDL_PauseAudioDevice(audioDeviceID,false);
+	SDL_PauseAudioDevice(audioDeviceID,false);
 
 	return true;
 }
