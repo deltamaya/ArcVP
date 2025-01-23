@@ -117,7 +117,7 @@ int main(){
 	SDL_Color textColor = {255, 255, 255, 0};
 	SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), textColor);
 
-	arc.open("test5s.mp4");
+	arc.open("test.mp4");
 
 	auto [width,height] = arc.getWH();
 	spdlog::info("w: {}, h: {}", width, height);

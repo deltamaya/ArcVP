@@ -29,8 +29,18 @@ void ArcVP::startPlayback(){
 		spdlog::info("Unable to setup audio device: {}", audioDeviceName);
 		return;
 	}
+
+	if (!decodeProducer) {
+		decodeProducer = std::make_unique<std::thread>([this]{ this->decodeProduceThreadBody(); });
+	}
+	if(!decodeConsumer) {
+		decodeConsumer=std::make_unique<std::thread>([this]{this->decodeConsumeThreadBody();});
+	}
+}
+
+void ArcVP::decodeProduceThreadBody(){
 	// demux all packets from the format context
-	while (true) {
+	while (running.load()) {
 		AVPacket* pkt = av_packet_alloc();
 		if (!pkt) {
 			spdlog::error("Failed to allocate AVPacket");
@@ -49,45 +59,31 @@ void ArcVP::startPlayback(){
 		}
 
 		if (pkt->stream_index == videoStreamIndex) {
-			videoPacketQueue.push(pkt);
+			videoPacketQueue.send(pkt);
 		} else if (pkt->stream_index == audioStreamIndex) {
-			audioPacketQueue.push(pkt);
+			audioPacketQueue.send(pkt);
 		} else {
 			spdlog::warn("Unknown packet index: {}", pkt->stream_index);
 			av_packet_free(&pkt);
 		}
 	}
-
-	spdlog::debug("video packet queue size: {}", videoPacketQueue.size());
-	spdlog::debug("audio packet queue size: {}", audioPacketQueue.size());
-
-
-	if (!decodeThread) {
-		decodeThread = std::make_unique<std::thread>([this]{ this->decodeThreadBody(); });
-	}
 }
 
-void ArcVP::decodeThreadBody(){
+
+void ArcVP::decodeConsumeThreadBody(){
 	auto start = system_clock::now();
 	auto timebase = this->getTimebase();
-	int cnt=0;
 	while (this->running.load()) {
 		AVFrame* frame = av_frame_alloc();
 		while(true) {
 			int ret=avcodec_receive_frame(videoCodecContext, frame);;
 			if(ret==AVERROR(EAGAIN)) {
-				if(videoPacketQueue.empty()) {
-					spdlog::debug("decode EOF");
-					pushFinishEvent();
-					return;
-				}
-				auto pkt = videoPacketQueue.front();
-				videoPacketQueue.pop();
-				ret=avcodec_send_packet(videoCodecContext, pkt);
+				auto pkt = videoPacketQueue.receive();
+				ret=avcodec_send_packet(videoCodecContext, pkt.value());
 				if(ret<0) {
 					spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
 				}
-				av_packet_free(&pkt);
+				av_packet_free(&pkt.value());
 			}else if(ret==AVERROR_EOF) {
 				pushFinishEvent();
 				av_frame_free(&frame);
@@ -173,14 +169,13 @@ void audioCallback(void* userdata, Uint8* stream, int len){
 			while(true) {
 				int ret=avcodec_receive_frame(arc->audioCodecContext, frame);;
 				if(ret==AVERROR(EAGAIN)) {
-					if(arc->audioPacketQueue.empty()) {
-						memset(stream,0,len);
-						return;
-					}
-					auto pkt = arc->audioPacketQueue.front();
-					arc->audioPacketQueue.pop();
-					avcodec_send_packet(arc->audioCodecContext, pkt);
-					av_packet_free(&pkt);
+					// if(arc->audioPacketQueue.empty()) {
+					// 	memset(stream,0,len);
+					// 	return;
+					// }
+					auto pkt = arc->audioPacketQueue.receive();
+					avcodec_send_packet(arc->audioCodecContext, pkt.value());
+					av_packet_free(&pkt.value());
 				}else if(ret==AVERROR_EOF) {
 					pushFinishEvent();
 					av_frame_free(&frame);

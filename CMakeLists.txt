@@ -28,6 +28,8 @@ add_executable(ArcVP main.cc
         include/arcvp.h
         src/arcvp_file_handler.cc
         src/arcvp_decode_handler.cc
-        src/arcvp_playback_handler.cc)
+        src/arcvp_playback_handler.cc
+        src/arcvp_speedseek_handler.cc
+        include/Channel.h)
 # Link Libraries
 target_link_libraries(ArcVP OpenGL::GL ${FFMPEG_LIBRARIES} spdlog::spdlog SDL2::SDL2 SDL2_ttf::SDL2_ttf)

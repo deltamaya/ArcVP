@@ -14,6 +14,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
+#include "Channel.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -24,6 +25,14 @@ extern "C" {
 #include <SDL2/SDL.h>
 }
 
+struct ClearAVPacket{
+	void operator()(AVPacket* pkt) const{
+		spdlog::debug("clear packet");
+		av_packet_free(&pkt);
+	}
+};
+
+
 class ArcVP{
 	AVFormatContext* formatContext = nullptr;
 	const AVCodec* videoCodec = nullptr;
@@ -32,32 +41,34 @@ class ArcVP{
 	AVCodecContext* audioCodecContext = nullptr;
 	const AVCodecParameters* videoCodecParams = nullptr;
 	const AVCodecParameters* audioCodecParams = nullptr;
-	std::unique_ptr<std::thread> decodeThread = nullptr, playbackThread = nullptr;
-	std::queue<AVPacket *> videoPacketQueue, audioPacketQueue;
+	std::unique_ptr<std::thread> decodeProducer = nullptr, decodeConsumer = nullptr;
+	Channel<AVPacket *, ClearAVPacket> videoPacketQueue, audioPacketQueue;
 
 	const AVStream *videoStream = nullptr, *audioStream = nullptr;
 	int videoStreamIndex = -1, audioStreamIndex = -1;
 
-	std::atomic<bool> running,pause,finished;
+	std::atomic<bool> running, pause, finished;
 	std::mutex mtx{};
 	AVRational timebase{};
 
-	SDL_AudioDeviceID audioDeviceID=-1;
-	char* audioDeviceName=nullptr;
+	SDL_AudioDeviceID audioDeviceID = -1;
+	char* audioDeviceName = nullptr;
 	SDL_AudioSpec audioSpec{};
 
 
 	int width = -1, height = -1;
 	int durationMilli = -1;
 
-	void decodeThreadBody();
+	void decodeProduceThreadBody();
+
+	void decodeConsumeThreadBody();
 
 	bool setupAudioDevice(int);
 
 public:
-
 	bool resampleAudioFrame(AVFrame* frame, std::vector<uint8_t>&vec);
-	friend void audioCallback(void *userdata, Uint8 *stream, int len);
+
+	friend void audioCallback(void* userdata, Uint8* stream, int len);
 
 	ArcVP(){
 		running.store(true);
@@ -65,7 +76,15 @@ public:
 
 	~ArcVP(){
 		running.store(false);
-		decodeThread->join();
+
+		videoPacketQueue.close();
+		audioPacketQueue.close();
+		if (decodeProducer) {
+			decodeProducer->join();
+		}
+		if (decodeConsumer) {
+			decodeConsumer->join();
+		}
 	}
 
 	bool open(const char*);
@@ -75,7 +94,7 @@ public:
 	void startPlayback();
 
 	void togglePause(){
-		bool p=pause.load();
+		bool p = pause.load();
 		pause.store(!p);
 	}
 
@@ -97,7 +116,6 @@ public:
 enum ArcVPEvent{
 	ARCVP_NEXTFRAME_EVENT = SDL_USEREVENT + 1,
 	ARCVP_FINISH_EVENT,
-
 };
 
 
