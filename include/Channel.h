@@ -44,7 +44,7 @@ public:
 		if (!queue.empty()) {
 			T value = queue.front();
 			queue.pop();
-			spdlog::debug("queue receive: {}",queue.size());
+			// spdlog::debug("queue receive: {}",queue.size());
 			cv_send.notify_all();
 			return value;
 		}
@@ -66,9 +66,14 @@ public:
 		while(!queue.empty()) {
 			auto item=queue.front();
 			queue.pop();
+			// spdlog::debug("queue pop: {}",queue.size());
+
 			Del{}(item);
 		}
+		spdlog::debug("clear: {}",queue.size());
 		cv_send.notify_all();
+		lock.unlock();
+
 	}
 
 	// 关闭 Channel，发送和接收操作会终止

@@ -86,7 +86,6 @@ bool ArcVP::open(const char* filename){
 		}
 		this->width=videoCodecParams->width;
 		this->height=videoCodecParams->height;
-		this->timebase=videoStream->time_base;
 	}
 
 	if (hasAudio) {

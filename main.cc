@@ -68,6 +68,7 @@ void presentFrame(AVFrame* frame){
 
 void handleKeyDown(SDL_Window* window, ArcVP&arc, const SDL_Event&event){
 	static bool fullscreen = false;
+	int64_t t=-1;
 	switch (event.key.keysym.sym) {
 		case SDLK_SPACE:
 			arc.togglePause();
@@ -77,6 +78,14 @@ void handleKeyDown(SDL_Window* window, ArcVP&arc, const SDL_Event&event){
 			SDL_SetWindowFullscreen(window, fullscreen);
 		 handleResize();
 			presentFrame(frame);
+			break;
+		case SDLK_LEFT:
+			 t=arc.getPlayDuration();
+			arc.seekTo(std::max(t-5000,0ll));
+			break;
+		case SDLK_RIGHT:
+			 t=arc.getPlayDuration();
+			arc.seekTo(t+5000);
 			break;
 		default:
 			break;

@@ -27,7 +27,6 @@ extern "C" {
 
 struct ClearAVPacket{
 	void operator()(AVPacket* pkt) const{
-		spdlog::debug("clear packet");
 		av_packet_free(&pkt);
 	}
 };
@@ -47,17 +46,20 @@ class ArcVP{
 	const AVStream *videoStream = nullptr, *audioStream = nullptr;
 	int videoStreamIndex = -1, audioStreamIndex = -1;
 
-	std::atomic<bool> running, pause, finished;
-	std::mutex mtx{};
-	AVRational timebase{};
+	std::atomic<bool> running, pause, finished,seeked;
+	std::mutex fmtMtx{}, videoMtx{}, audioMtx{};
 
 	SDL_AudioDeviceID audioDeviceID = -1;
 	char* audioDeviceName = nullptr;
 	SDL_AudioSpec audioSpec{};
 
+	std::vector<uint8_t> audioBuffer;
+
 
 	int width = -1, height = -1;
-	int durationMilli = -1;
+	std::chrono::system_clock::time_point videoStart;
+
+	int64_t audioPos=0;
 
 	void decodeProduceThreadBody();
 
@@ -66,7 +68,7 @@ class ArcVP{
 	bool setupAudioDevice(int);
 
 public:
-	bool resampleAudioFrame(AVFrame* frame, std::vector<uint8_t>&vec);
+	bool resampleAudioFrame(AVFrame* frame);
 
 	friend void audioCallback(void* userdata, Uint8* stream, int len);
 
@@ -98,18 +100,25 @@ public:
 		pause.store(!p);
 	}
 
-	void seekTo(std::int64_t);
+	void seekTo(std::int64_t milli);
 
 	void speedUp();
 
 	void speedDown();
 
+
+	void audioSyncTo(AVFrame* frame);
+
+	std::int64_t getAudioPlayTime(std::int64_t bytesPlayed);
+
 	std::tuple<int, int> getWH(){
 		return std::make_tuple(width, height);
 	}
 
-	AVRational getTimebase(){
-		return timebase;
+	int64_t getPlayDuration(){
+		std::unique_lock lk{videoMtx};
+		return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - videoStart).
+				count();
 	}
 };
 
@@ -117,6 +126,11 @@ enum ArcVPEvent{
 	ARCVP_NEXTFRAME_EVENT = SDL_USEREVENT + 1,
 	ARCVP_FINISH_EVENT,
 };
+
+
+int64_t ptsToTime(int64_t pts, AVRational timebase);
+
+int64_t timeToPts(int64_t milli, AVRational timebase);
 
 
 #endif //ARCVP_H
