@@ -27,7 +27,6 @@ void ArcVP::seekTo(std::int64_t milli){
 			return;
 		}
 		avcodec_flush_buffers(videoCodecContext);
-		videoStart=now-milliseconds(milli);
 		videoPacketQueue.clear();
 	}
 
@@ -118,12 +117,20 @@ void ArcVP::seekTo(std::int64_t milli){
 	}
 	av_frame_free(&frame);
 	av_packet_free(&pkt);
+	videoStart=now-milliseconds(static_cast<int>( milli/speed ));
+
 }
 
 void ArcVP::speedUp(){
-
+    std::unique_lock lk{videoMtx};
+	speed=1.5;
+	auto pTimeMilli=ptsToTime(prevFramePts,videoStream->time_base);
+	videoStart = system_clock::now() - milliseconds(static_cast<int>( pTimeMilli / speed ));
 }
 
 void ArcVP::speedDown(){
-
+	std::unique_lock lk{videoMtx};
+	speed=0.5;
+	auto pTimeMilli=ptsToTime(prevFramePts,videoStream->time_base);
+	videoStart = system_clock::now() - milliseconds(static_cast<int>( pTimeMilli / speed ));
 }

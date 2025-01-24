@@ -59,7 +59,9 @@ class ArcVP{
 	int width = -1, height = -1;
 	std::chrono::system_clock::time_point videoStart;
 
-	int64_t audioPos=0;
+	int64_t audioPos=0,prevFramePts=AV_NOPTS_VALUE;
+	double speed=1.;
+
 
 	void decodeProduceThreadBody();
 
@@ -98,6 +100,7 @@ public:
 	void togglePause(){
 		bool p = pause.load();
 		pause.store(!p);
+		SDL_PauseAudioDevice(audioDeviceID,!p);
 	}
 
 	void seekTo(std::int64_t milli);

@@ -83,7 +83,6 @@ void ArcVP::decodeProduceThreadBody(){
 
 void ArcVP::decodeConsumeThreadBody(){
 	videoStart = system_clock::now();
-	auto timebase = videoStream->time_base;
 	while (this->running.load()) {
 		AVFrame* frame = av_frame_alloc();
 		std::unique_lock video{videoMtx};
@@ -109,14 +108,15 @@ void ArcVP::decodeConsumeThreadBody(){
 				av_frame_free(&frame);
 			}
 		}
-		int pTimeMilli = frame->pts * timebase.num * 1000. / timebase.den;
+		int64_t pTimeMilli =ptsToTime(frame->pts,videoStream->time_base);
 
 		while (pause.load() && running.load()) {
-			videoStart = system_clock::now() - milliseconds(pTimeMilli);
+			videoStart = system_clock::now() - milliseconds(static_cast<int>( pTimeMilli / speed ));
 			std::this_thread::sleep_for(10ms);
 		}
 
-		auto pTime = videoStart + milliseconds(pTimeMilli);
+		auto pTime = videoStart + milliseconds(static_cast<int>( pTimeMilli / speed ));
+		prevFramePts=frame->pts;
 		video.unlock();
 
 		std::this_thread::sleep_until(pTime);
@@ -167,11 +167,6 @@ void audioCallback(void* userdata, Uint8* stream, int len){
 	auto arc = static_cast<ArcVP *>( userdata );
 	static AVFrame* frame = av_frame_alloc();
 
-	// paused
-	if (arc->pause.load()) {
-		memset(stream, 0, len);
-		return;
-	}
 
 	while (len > 0) {
 		std::unique_lock lk{arc->audioMtx};
@@ -202,9 +197,9 @@ void audioCallback(void* userdata, Uint8* stream, int len){
 			}
 			pos -= arc->audioBuffer.size();
 			arc->resampleAudioFrame(frame);
-			spdlog::debug("frame pts: {}",frame->pts);
+			// spdlog::debug("frame pts: {}",frame->pts);
 
-			arc->audioSyncTo(frame);
+			// arc->audioSyncTo(frame);
 		}
 		// spdlog::debug("audio frame pts: {}",frame->pts);
 		bytesCopied = std::min(arc->audioBuffer.size() - pos, static_cast<std::size_t>( len ));

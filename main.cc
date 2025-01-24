@@ -39,7 +39,6 @@ void calculateDisplayRect(){
 }
 
 
-
 SDL_Window* window = nullptr;
 
 SDL_Renderer* renderer = nullptr;
@@ -68,7 +67,7 @@ void presentFrame(AVFrame* frame){
 
 void handleKeyDown(SDL_Window* window, ArcVP&arc, const SDL_Event&event){
 	static bool fullscreen = false;
-	int64_t t=-1;
+	int64_t t = -1;
 	switch (event.key.keysym.sym) {
 		case SDLK_SPACE:
 			arc.togglePause();
@@ -76,16 +75,22 @@ void handleKeyDown(SDL_Window* window, ArcVP&arc, const SDL_Event&event){
 		case SDLK_f:
 			fullscreen = !fullscreen;
 			SDL_SetWindowFullscreen(window, fullscreen);
-		 handleResize();
+			handleResize();
 			presentFrame(frame);
 			break;
 		case SDLK_LEFT:
-			 t=arc.getPlayDuration();
-			arc.seekTo(std::max(t-5000,0ll));
+			t = arc.getPlayDuration();
+			arc.seekTo(std::max(t - 5000, 0ll));
 			break;
 		case SDLK_RIGHT:
-			 t=arc.getPlayDuration();
-			arc.seekTo(t+5000);
+			t = arc.getPlayDuration();
+			arc.seekTo(t + 5000);
+			break;
+		case SDLK_UP:
+			arc.speedUp();
+			break;
+		case SDLK_DOWN:
+			arc.speedDown();
 			break;
 		default:
 			break;
@@ -93,7 +98,6 @@ void handleKeyDown(SDL_Window* window, ArcVP&arc, const SDL_Event&event){
 }
 
 ArcVP arc;
-
 
 
 int main(){
