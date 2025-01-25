@@ -69,11 +69,14 @@ void ArcVP::seekTo(std::int64_t milli){
 			}
 			if(pkt->stream_index==videoStreamIndex) {
 				ret = avcodec_send_packet(videoCodecContext, pkt);
+				if (ret < 0) {
+					spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
+				}
 			}else if(pkt->stream_index==audioStreamIndex){
 				ret = avcodec_send_packet(audioCodecContext, pkt);
-			}
-			if (ret < 0) {
-				spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
+				if (ret < 0) {
+					spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
+				}
 			}
 			av_packet_unref(pkt);
 		}
