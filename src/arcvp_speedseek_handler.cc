@@ -123,14 +123,52 @@ void ArcVP::seekTo(std::int64_t milli){
 
 void ArcVP::speedUp(){
     std::unique_lock lk{videoMtx};
-	speed=1.5;
+	if(speed<1) {
+		speed=1;
+	}else if(speed<1.5){
+		speed=1.5;
+	}else {
+		speed=2;
+	}
 	auto pTimeMilli=ptsToTime(prevFramePts,videoStream->time_base);
+	bool p=pause.load();
+	if (audioDeviceID > 0) {
+		SDL_CloseAudioDevice(audioDeviceID);
+	}
+	if(!p) {
+		togglePause();
+		setupAudioDevice(audioCodecParams->sample_rate*speed);
+		togglePause();
+	}else {
+		setupAudioDevice(audioCodecParams->sample_rate*speed);
+	}
+
+
+
 	videoStart = system_clock::now() - milliseconds(static_cast<int>( pTimeMilli / speed ));
 }
 
 void ArcVP::speedDown(){
 	std::unique_lock lk{videoMtx};
-	speed=0.5;
+	if(speed>1.5) {
+		speed=1.5;
+	}else if(speed>1) {
+		speed=1;
+	}else {
+		speed=0.5;
+	}
+	bool p=pause.load();
+	if (audioDeviceID > 0) {
+		SDL_CloseAudioDevice(audioDeviceID);
+	}
+	if(!p) {
+		togglePause();
+		setupAudioDevice(audioCodecParams->sample_rate*speed);
+		togglePause();
+	}else {
+		setupAudioDevice(audioCodecParams->sample_rate*speed);
+	}
+
 	auto pTimeMilli=ptsToTime(prevFramePts,videoStream->time_base);
 	videoStart = system_clock::now() - milliseconds(static_cast<int>( pTimeMilli / speed ));
 }

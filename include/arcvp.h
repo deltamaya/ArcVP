@@ -32,6 +32,10 @@ struct ClearAVPacket{
 };
 
 
+int64_t ptsToTime(int64_t pts, AVRational timebase);
+
+int64_t timeToPts(int64_t milli, AVRational timebase);
+
 class ArcVP{
 	AVFormatContext* formatContext = nullptr;
 	const AVCodec* videoCodec = nullptr;
@@ -46,7 +50,7 @@ class ArcVP{
 	const AVStream *videoStream = nullptr, *audioStream = nullptr;
 	int videoStreamIndex = -1, audioStreamIndex = -1;
 
-	std::atomic<bool> running, pause, finished,seeked;
+	std::atomic<bool> running, pause, finished, seeked;
 	std::mutex fmtMtx{}, videoMtx{}, audioMtx{};
 
 	SDL_AudioDeviceID audioDeviceID = -1;
@@ -59,8 +63,8 @@ class ArcVP{
 	int width = -1, height = -1;
 	std::chrono::system_clock::time_point videoStart;
 
-	int64_t audioPos=0,prevFramePts=AV_NOPTS_VALUE;
-	double speed=1.;
+	int64_t audioPos = 0, prevFramePts = AV_NOPTS_VALUE;
+	double speed = 1.;
 
 
 	void decodeProduceThreadBody();
@@ -100,7 +104,11 @@ public:
 	void togglePause(){
 		bool p = pause.load();
 		pause.store(!p);
-		SDL_PauseAudioDevice(audioDeviceID,!p);
+		SDL_PauseAudioDevice(audioDeviceID, !p);
+		if (p) {
+			auto t = ptsToTime(prevFramePts, videoStream->time_base);
+			videoStart = std::chrono::system_clock::now() - std::chrono::milliseconds(static_cast<int>( t / speed ));
+		}
 	}
 
 	void seekTo(std::int64_t milli);
@@ -129,11 +137,6 @@ enum ArcVPEvent{
 	ARCVP_NEXTFRAME_EVENT = SDL_USEREVENT + 1,
 	ARCVP_FINISH_EVENT,
 };
-
-
-int64_t ptsToTime(int64_t pts, AVRational timebase);
-
-int64_t timeToPts(int64_t milli, AVRational timebase);
 
 
 #endif //ARCVP_H

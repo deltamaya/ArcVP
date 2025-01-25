@@ -5,6 +5,11 @@
 
 #include "arcvp.h"
 
+extern "C" {
+#include <libavutil/opt.h>
+#include <libavutil/channel_layout.h>
+#include <libswresample/swresample.h>
+}
 
 using namespace std::chrono;
 
@@ -44,6 +49,8 @@ void ArcVP::startPlayback(){
 	if (!decodeConsumer) {
 		decodeConsumer = std::make_unique<std::thread>([this]{ this->decodeConsumeThreadBody(); });
 	}
+	SDL_PauseAudioDevice(audioDeviceID, false);
+
 }
 
 void ArcVP::decodeProduceThreadBody(){
@@ -84,6 +91,9 @@ void ArcVP::decodeProduceThreadBody(){
 void ArcVP::decodeConsumeThreadBody(){
 	videoStart = system_clock::now();
 	while (this->running.load()) {
+		while (pause.load() && running.load()) {
+			std::this_thread::sleep_for(10ms);
+		}
 		AVFrame* frame = av_frame_alloc();
 		std::unique_lock video{videoMtx};
 		while (true) {
@@ -108,15 +118,10 @@ void ArcVP::decodeConsumeThreadBody(){
 				av_frame_free(&frame);
 			}
 		}
-		int64_t pTimeMilli =ptsToTime(frame->pts,videoStream->time_base);
-
-		while (pause.load() && running.load()) {
-			videoStart = system_clock::now() - milliseconds(static_cast<int>( pTimeMilli / speed ));
-			std::this_thread::sleep_for(10ms);
-		}
+		int64_t pTimeMilli = ptsToTime(frame->pts, videoStream->time_base);
 
 		auto pTime = videoStart + milliseconds(static_cast<int>( pTimeMilli / speed ));
-		prevFramePts=frame->pts;
+		prevFramePts = frame->pts;
 		video.unlock();
 
 		std::this_thread::sleep_until(pTime);
@@ -125,44 +130,37 @@ void ArcVP::decodeConsumeThreadBody(){
 }
 
 
+
 bool ArcVP::resampleAudioFrame(AVFrame* frame){
 	static SwrContext* ctx = nullptr;
 	if (!ctx) {
 		swr_alloc_set_opts2(&ctx,
-		                    &audioCodecParams->ch_layout,
-		                    AV_SAMPLE_FMT_FLT,
-		                    audioCodecParams->sample_rate,
-		                    &audioCodecParams->ch_layout,
-		                    audioCodecContext->sample_fmt,
-		                    audioCodecParams->sample_rate,
-		                    0,
-		                    nullptr);
+							&audioCodecParams->ch_layout,
+							AV_SAMPLE_FMT_FLT,
+							audioCodecParams->sample_rate,
+							&audioCodecParams->ch_layout,
+							audioCodecContext->sample_fmt,
+							audioCodecParams->sample_rate,
+							0,
+							nullptr);
 
 		swr_init(ctx);
 	}
-	uint8_t** converted_data = nullptr;
-	int max_samples = audioCodecContext->frame_size;
-	av_samples_alloc_array_and_samples(&converted_data, nullptr, 2, max_samples, AV_SAMPLE_FMT_FLT, 0);
-	if (!converted_data) {
-		spdlog::error("Unable to alloc sample array");
-		std::exit(1);
-	}
 	int outSamples = av_rescale_rnd(swr_get_delay(ctx, audioCodecContext->sample_rate) +
-	                                frame->nb_samples,
-	                                audioCodecContext->sample_rate,
-	                                audioCodecContext->sample_rate,
-	                                AV_ROUND_UP);
+									frame->nb_samples,
+									audioCodecContext->sample_rate,
+									audioCodecContext->sample_rate,
+									AV_ROUND_UP);
 
 	audioBuffer.resize(outSamples * audioCodecContext->ch_layout.nb_channels * sizeof(float));
 	uint8_t* outBuffer = audioBuffer.data();
 	swr_convert(ctx,
-	            &outBuffer,
-	            outSamples,
-	            frame->data,
-	            frame->nb_samples);
+				&outBuffer,
+				outSamples,
+				frame->data,
+				frame->nb_samples);
 	return true;
 }
-
 void audioCallback(void* userdata, Uint8* stream, int len){
 	auto arc = static_cast<ArcVP *>( userdata );
 	static AVFrame* frame = av_frame_alloc();
@@ -170,7 +168,7 @@ void audioCallback(void* userdata, Uint8* stream, int len){
 
 	while (len > 0) {
 		std::unique_lock lk{arc->audioMtx};
-		auto &pos=arc->audioPos;
+		auto&pos = arc->audioPos;
 		int bytesCopied = 0;
 		if (pos >= arc->audioBuffer.size()) {
 			/* We have already sent all our data; get more */
@@ -199,7 +197,7 @@ void audioCallback(void* userdata, Uint8* stream, int len){
 			arc->resampleAudioFrame(frame);
 			// spdlog::debug("frame pts: {}",frame->pts);
 
-			// arc->audioSyncTo(frame);
+			arc->audioSyncTo(frame);
 		}
 		// spdlog::debug("audio frame pts: {}",frame->pts);
 		bytesCopied = std::min(arc->audioBuffer.size() - pos, static_cast<std::size_t>( len ));
@@ -230,7 +228,6 @@ bool ArcVP::setupAudioDevice(int sampleRate){
 		spdlog::error("SDL_OpenAudio: {}", SDL_GetError());
 		return false;
 	}
-	SDL_PauseAudioDevice(audioDeviceID, false);
 
 	return true;
 }
@@ -239,11 +236,11 @@ bool ArcVP::setupAudioDevice(int sampleRate){
 constexpr int AUDIO_SYNC_THRESHOLD = 100;
 
 void ArcVP::audioSyncTo(AVFrame* frame){
-	auto pTime = videoStart + milliseconds(ptsToTime(frame->pts, audioStream->time_base));
+	auto pTime = videoStart + milliseconds(static_cast<int>( ptsToTime(frame->pts, audioStream->time_base) / speed ));
 	auto now = system_clock::now();
-	auto nowms=duration_cast<milliseconds>(now.time_since_epoch()).count();
-	auto pTimems=duration_cast<milliseconds>(pTime.time_since_epoch()).count();
-	spdlog::debug("ptime - now = {}ms",pTimems-nowms);
+	auto nowms = duration_cast<milliseconds>(now.time_since_epoch()).count();
+	auto pTimems = duration_cast<milliseconds>(pTime.time_since_epoch()).count();
+	spdlog::debug("ptime - now = {}ms", pTimems - nowms);
 	std::int64_t deltaTime = std::abs(duration_cast<milliseconds>(now - pTime).count());
 	if (deltaTime < AUDIO_SYNC_THRESHOLD) {
 		return;
