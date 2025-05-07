@@ -25,9 +25,15 @@ extern "C" {
 #include <SDL2/SDL.h>
 }
 
-struct ClearAVPacket{
+struct DisposeAVPacket{
 	void operator()(AVPacket* pkt) const{
 		av_packet_free(&pkt);
+	}
+};
+
+struct DisposeAVFrame{
+	void operator()(AVFrame* frame)const{
+		av_frame_free(&frame);
 	}
 };
 
@@ -54,7 +60,7 @@ class ArcVP{
 	const AVCodecParameters* videoCodecParams = nullptr;
 	const AVCodecParameters* audioCodecParams = nullptr;
 	std::unique_ptr<std::thread> decoderThread = nullptr, playbackThread = nullptr;
-	Channel<AVPacket *,256, ClearAVPacket> videoPacketQueue, audioPacketQueue;
+	Channel<AVPacket *,256, DisposeAVPacket> videoPacketQueue, audioPacketQueue;
 	Channel<ArcVPEvent,256> msg;
 
 	const AVStream *videoStream = nullptr, *audioStream = nullptr;
@@ -63,7 +69,7 @@ class ArcVP{
 	std::atomic_bool running,pause;
 	std::atomic<WorkerStatus> decoderWorkerStatus=WorkerStatus::Idle,playbackWorkerStatus=WorkerStatus::Idle;
 
-	std::mutex fmtMtx{}, videoMtx{}, audioMtx{};
+	std::mutex fmtMtx{}, videoMtx{}, audioMtx{},renderQueueMtx{};
 
 	SDL_AudioDeviceID audioDeviceID = -1;
 	char* audioDeviceName = nullptr;
@@ -77,6 +83,13 @@ class ArcVP{
 
 	int64_t audioPos = 0, prevFramePts = AV_NOPTS_VALUE;
 	double speed = 1.;
+	struct RenderEntry{
+		AVFrame* frame;
+		int64_t presentTimeMs;
+	};
+
+	std::deque<RenderEntry> renderQueue;
+	std::counting_semaphore<> renderQueueReady,renderQueueEmpty=std::counting_semaphore(300);
 
 
 	void decoderWorker();
@@ -90,21 +103,52 @@ public:
 
 	friend void audioCallback(void* userdata, Uint8* stream, int len);
 
-	ArcVP(): videoPacketQueue(), audioPacketQueue(), msg(){
+	ArcVP(): renderQueueReady(0){
 		running = true;
 	}
 
 	~ArcVP(){
 		running=false;
 
+		decoderWorkerStatus=WorkerStatus::Exiting;
+		playbackWorkerStatus=WorkerStatus::Exiting;
+
 		videoPacketQueue.close();
 		audioPacketQueue.close();
+
+		{
+			std::scoped_lock lk{renderQueueMtx};
+			while (!renderQueue.empty()) {
+				renderQueueReady.acquire();
+				renderQueue.pop_front();
+				renderQueueEmpty.release();
+			}
+		}
+
+
 		if (decoderThread) {
 			decoderThread->join();
 		}
 		if (playbackThread) {
 			playbackThread->join();
 		}
+	}
+
+	AVFrame* tryFetchFrame(std::chrono::system_clock::time_point tp){
+		auto milli=duration_cast<std::chrono::milliseconds>(tp-videoStart).count();
+		bool ok=renderQueueReady.try_acquire();
+		if (!ok) {
+			return nullptr;
+		}
+		std::scoped_lock lk{renderQueueMtx};
+		auto front=renderQueue.front();
+		if (front.presentTimeMs<milli) {
+			renderQueueEmpty.release();
+			renderQueue.pop_front();
+			return front.frame;
+		}
+		renderQueueReady.release();
+		return nullptr;
 	}
 
 	bool open(const char*);

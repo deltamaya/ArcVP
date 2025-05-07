@@ -160,6 +160,13 @@ int main(){
 
 	SDL_Event event;
 	while (running) {
+		{
+			AVFrame* frame=arc.tryFetchFrame(system_clock::now());
+			if (frame) {
+				presentFrame(frame);
+				av_frame_free(&frame);
+			}
+		}
 		while (SDL_PollEvent(&event)) {
 			switch (event.type) {
 				case SDL_QUIT:
@@ -179,12 +186,11 @@ int main(){
 					handleKeyDown(window, arc, event);
 					break;
 				case ARCVP_NEXTFRAME_EVENT:
-					if (event.type == ARCVP_NEXTFRAME_EVENT) {
-						av_frame_free(&frame);
-						frame = static_cast<AVFrame *>( event.user.data1 );
-						// spdlog::debug("frame pointer: {}",(void*)frame);
-						presentFrame(frame);
-					}
+					// if (event.type == ARCVP_NEXTFRAME_EVENT) {
+					// 	av_frame_free(&frame);
+					// 	frame = static_cast<AVFrame *>( event.user.data1 );
+					// 	// spdlog::debug("frame pointer: {}",(void*)frame);
+					// }
 					break;
 				case ARCVP_FINISH_EVENT:
 					spdlog::debug("play finish");

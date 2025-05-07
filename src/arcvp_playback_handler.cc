@@ -93,7 +93,7 @@ void ArcVP::decoderWorker(){
 			av_packet_free(&pkt);
 		}
 	}
-	spdlog::info("Packet Producer Exited");
+	spdlog::info("Decoder Thread Exited");
 }
 
 
@@ -108,7 +108,9 @@ void ArcVP::playbackWorker(){
 		AVFrame* frame = av_frame_alloc();
 		int ret=0;
 		while (true) {
+			spdlog::debug("trying to receive frame");
 			std::scoped_lock video{videoMtx};
+			spdlog::debug("video mutex acquired");
 			ret = avcodec_receive_frame(videoCodecContext, frame);
 			if (ret == 0) {
 				break;
@@ -116,8 +118,8 @@ void ArcVP::playbackWorker(){
 			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
 				auto pkt = videoPacketQueue.receive();
 				if (!pkt) {
-					spdlog::debug("Consumer exited due to closed channel");
-					return;
+					spdlog::info("Consumer exited due to closed channel");
+					goto end;
 				}
 				ret = avcodec_send_packet(videoCodecContext, pkt.value());
 				if (ret < 0) {
@@ -130,15 +132,28 @@ void ArcVP::playbackWorker(){
 				av_frame_free(&frame);
 			}
 		}
-		int64_t pTimeMilli = ptsToTime(frame->pts, videoStream->time_base);
 
-		auto pTime = videoStart + milliseconds(static_cast<int>( pTimeMilli / speed ));
-		prevFramePts = frame->pts;
+		//
+		// auto pTime = videoStart + milliseconds(static_cast<int>( pTimeMilli / speed ));
+		// prevFramePts = frame->pts;
+		//
+		// std::this_thread::sleep_until(pTime);
+		// pushNextFrameEvent(frame);
 
-		std::this_thread::sleep_until(pTime);
-		pushNextFrameEvent(frame);
+		{
+			spdlog::debug("try acquiring empty sem");
+			renderQueueEmpty.acquire();
+			int64_t presentTimeMs = ptsToTime(frame->pts, videoStream->time_base);
+			std::scoped_lock renderQueueLk{renderQueueMtx};
+			spdlog::debug("render queue mutex acquired");
+
+			renderQueue.emplace_back(frame,presentTimeMs);
+			renderQueueReady.release();
+		}
+
 	}
-	spdlog::info("Packet Consumer Exited");
+	end:
+	spdlog::info("Playback Thread Exited");
 
 }
 
@@ -253,7 +268,7 @@ void ArcVP::audioSyncTo(AVFrame* frame){
 	auto now = system_clock::now();
 	auto nowms = duration_cast<milliseconds>(now.time_since_epoch()).count();
 	auto pTimems = duration_cast<milliseconds>(pTime.time_since_epoch()).count();
-	spdlog::debug("ptime - now = {}ms", pTimems - nowms);
+	spdlog::debug("audio: ptime - now = {}ms", pTimems - nowms);
 	std::int64_t deltaTime = std::abs(duration_cast<milliseconds>(now - pTime).count());
 	if (deltaTime < AUDIO_SYNC_THRESHOLD) {
 		return;

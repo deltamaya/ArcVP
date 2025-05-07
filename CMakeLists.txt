@@ -27,7 +27,7 @@ link_directories(${FFMPEG_LIBRARY_DIRS})
 add_executable(ArcVP main.cc
         include/arcvp.h
         src/arcvp_file_handler.cc
-        src/arcvp_decode_handler.cc
+#        src/arcvp_decode_handler.cc
         src/arcvp_playback_handler.cc
         src/arcvp_speedseek_handler.cc
         include/Channel.h)
