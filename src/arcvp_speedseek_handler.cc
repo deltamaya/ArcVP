@@ -8,11 +8,7 @@
 using namespace std::chrono;
 
 void ArcVP::seekTo(std::int64_t milli){
-	std::unique_lock fmt{fmtMtx,std::defer_lock};
-	std::unique_lock video{audioMtx,std::defer_lock};
-	std::unique_lock audio{videoMtx,std::defer_lock};
-
-	std::lock(fmt,video,audio);
+	std::scoped_lock lk{fmtMtx,videoMtx,audioMtx};
 
 	spdlog::debug("seek to {}ms",milli);
 	auto now=system_clock::now();
@@ -43,12 +39,8 @@ void ArcVP::seekTo(std::int64_t milli){
 		avcodec_flush_buffers(audioCodecContext);
 		videoPacketQueue.clear();
 	}
-	if(!videoPacketQueue.empty()) {
-		videoPacketQueue.clear();
-	}
-	if(!audioPacketQueue.empty()) {
-		audioPacketQueue.clear();
-	}
+	videoPacketQueue.clear();
+	audioPacketQueue.clear();
 	AVPacket* pkt=av_packet_alloc();
 	AVFrame*frame=av_frame_alloc();
 	while (true) {

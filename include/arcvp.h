@@ -35,8 +35,17 @@ struct ClearAVPacket{
 int64_t ptsToTime(int64_t pts, AVRational timebase);
 
 int64_t timeToPts(int64_t milli, AVRational timebase);
+enum ArcVPEvent{
+	ARCVP_NEXTFRAME_EVENT = SDL_USEREVENT + 1,
+	ARCVP_FINISH_EVENT,
+};
 
 class ArcVP{
+	enum class WorkerStatus{
+		Working,
+		Idle,
+		Exiting
+	};
 	AVFormatContext* formatContext = nullptr;
 	const AVCodec* videoCodec = nullptr;
 	const AVCodec* audioCodec = nullptr;
@@ -44,13 +53,16 @@ class ArcVP{
 	AVCodecContext* audioCodecContext = nullptr;
 	const AVCodecParameters* videoCodecParams = nullptr;
 	const AVCodecParameters* audioCodecParams = nullptr;
-	std::unique_ptr<std::thread> decodeProducer = nullptr, decodeConsumer = nullptr;
-	Channel<AVPacket *, ClearAVPacket> videoPacketQueue, audioPacketQueue;
+	std::unique_ptr<std::thread> decoderThread = nullptr, playbackThread = nullptr;
+	Channel<AVPacket *,256, ClearAVPacket> videoPacketQueue, audioPacketQueue;
+	Channel<ArcVPEvent,256> msg;
 
 	const AVStream *videoStream = nullptr, *audioStream = nullptr;
 	int videoStreamIndex = -1, audioStreamIndex = -1;
 
-	std::atomic<bool> running, pause, finished, seeked;
+	std::atomic_bool running,pause;
+	std::atomic<WorkerStatus> decoderWorkerStatus=WorkerStatus::Idle,playbackWorkerStatus=WorkerStatus::Idle;
+
 	std::mutex fmtMtx{}, videoMtx{}, audioMtx{};
 
 	SDL_AudioDeviceID audioDeviceID = -1;
@@ -67,9 +79,9 @@ class ArcVP{
 	double speed = 1.;
 
 
-	void decodeProduceThreadBody();
+	void decoderWorker();
 
-	void decodeConsumeThreadBody();
+	void playbackWorker();
 
 	bool setupAudioDevice(int);
 
@@ -78,20 +90,20 @@ public:
 
 	friend void audioCallback(void* userdata, Uint8* stream, int len);
 
-	ArcVP(){
-		running.store(true);
+	ArcVP(): videoPacketQueue(), audioPacketQueue(), msg(){
+		running = true;
 	}
 
 	~ArcVP(){
-		running.store(false);
+		running=false;
 
 		videoPacketQueue.close();
 		audioPacketQueue.close();
-		if (decodeProducer) {
-			decodeProducer->join();
+		if (decoderThread) {
+			decoderThread->join();
 		}
-		if (decodeConsumer) {
-			decodeConsumer->join();
+		if (playbackThread) {
+			playbackThread->join();
 		}
 	}
 
@@ -102,10 +114,9 @@ public:
 	void startPlayback();
 
 	void togglePause(){
-		bool p = pause.load();
-		pause.store(!p);
-		SDL_PauseAudioDevice(audioDeviceID, !p);
-		if (p) {
+		pause=!pause;
+		SDL_PauseAudioDevice(audioDeviceID, pause);
+		if (!pause) {
 			auto t = ptsToTime(prevFramePts, videoStream->time_base);
 			videoStart = std::chrono::system_clock::now() - std::chrono::milliseconds(static_cast<int>( t / speed ));
 		}
@@ -133,10 +144,6 @@ public:
 	}
 };
 
-enum ArcVPEvent{
-	ARCVP_NEXTFRAME_EVENT = SDL_USEREVENT + 1,
-	ARCVP_FINISH_EVENT,
-};
 
 
 #endif //ARCVP_H

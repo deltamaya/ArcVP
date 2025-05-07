@@ -6,87 +6,62 @@
 #define CHANNEL_H
 
 #include <mutex>
-#include <condition_variable>
 #include <queue>
 #include <optional>
-template<typename T,typename Del=void>
+#include <semaphore>
+template<typename T,size_t Size,typename Del=void>
 class Channel {
-	std::queue<T> queue;              // 存储消息的队列
-	std::mutex mtx;                   // 保护队列的互斥锁
-	std::condition_variable cv_send;  // 用于通知发送操作
-	std::condition_variable cv_recv;  // 用于通知接收操作
-	bool closed = false;              // 标志 Channel 是否已关闭
-	int max_size=50;
+	std::queue<T> queue;
+	std::mutex mtx;
+	std::counting_semaphore<> semEmpty=std::counting_semaphore(Size);
+	std::counting_semaphore<> semReady;
+	std::atomic_bool closed = false;
+
+
 
 public:
-	// 发送数据到 Channel，当队列满时阻塞
-	void send(const T& value) {
-		std::unique_lock<std::mutex> lock(mtx);
-
+	void send(const T& value){
+		semEmpty.acquire();
+		std::scoped_lock lk{mtx};
 		if (closed) {
-			throw std::runtime_error("Channel is closed");
+			spdlog::warn("Sending to a closed channel");
+			return;
 		}
-
-		cv_send.wait(lock, [this] { return queue.size()<max_size||closed; });
-
 		queue.push(value);
-		spdlog::debug("queue send: {}",queue.size());
-		cv_recv.notify_all(); // 通知等待接收的线程
+		semReady.release();
 	}
 
-	// 从 Channel 接收数据，当队列为空时阻塞
-	// 返回一个 std::optional<T>，如果关闭且无数据，返回 std::nullopt
 	std::optional<T> receive() {
-		std::unique_lock lock(mtx);
-
-		cv_recv.wait(lock, [this] { return !queue.empty() || closed; });
-
-		if (!queue.empty()) {
-			T value = queue.front();
-			queue.pop();
-			// spdlog::debug("queue receive: {}",queue.size());
-			cv_send.notify_all();
-			return value;
-		}
-
+		semReady.acquire();
+		std::scoped_lock lk{mtx};
 		if (closed) {
+			spdlog::warn("Receiving from a closed channel");
 			return std::nullopt;
 		}
-
-		return std::nullopt;
-	}
-
-	bool empty(){
-		std::unique_lock lock{mtx};
-		return queue.empty();
+		// asserts the queue is not empty
+		assert(queue.size()!=0);
+		std::optional<T> ret(std::move(queue.front()));
+		queue.pop();
+		semEmpty.release();
+		return ret;
 	}
 
 	void clear(){
-		std::unique_lock lock{mtx};
-		while(!queue.empty()) {
+		std::scoped_lock lk{mtx};
+		while (!queue.empty()) {
+			semReady.acquire();
 			auto item=queue.front();
-			queue.pop();
-			// spdlog::debug("queue pop: {}",queue.size());
-
 			Del{}(item);
+			queue.pop();
+			semEmpty.release();
 		}
-		spdlog::debug("clear: {}",queue.size());
-		cv_send.notify_all();
-		lock.unlock();
-
 	}
-
-	// 关闭 Channel，发送和接收操作会终止
 	void close() {
-		std::unique_lock lock(mtx);
-		closed = true;
-		cv_send.notify_all();
-		cv_recv.notify_all(); // 通知所有等待接收的线程
+		closed=true;
+		clear();
 	}
 
-	// 检查 Channel 是否已关闭
 	bool is_closed() const {
-		std::unique_lock lock{mtx};
 		return closed;
 	}
 };

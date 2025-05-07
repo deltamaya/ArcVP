@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "arcvp.h"
 #include <SDL_ttf.h>
 
