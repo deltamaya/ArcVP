@@ -15,21 +15,32 @@ void Player::seekTo(std::int64_t milli){
 
   video_packet_channel_.clear();
   audio_packet_channel_.clear();
-  
-  spdlog::debug("render queue before seek size: {}",video_frame_channel_.size());
 
-  while (!video_frame_channel_.empty()&&video_frame_channel_.front()->present_ms<milli) {
-    video_frame_channel_.receive();
+  spdlog::debug("render queue before seek size: {}",video_frame_queue_.queue.size());
+
+  {
+    std::scoped_lock lk{video_frame_queue_.mtx};
+    while (!video_frame_queue_.queue.empty()&&video_frame_queue_.queue.front().present_ms<milli) {
+      video_frame_queue_.semReady.acquire();
+      av_frame_free(&video_frame_queue_.queue.front().frame);
+      video_frame_queue_.queue.pop_front();
+      video_frame_queue_.semEmpty.release();
+    }
   }
 
-  spdlog::debug("render queue after seek size: {}",video_frame_channel_.size());
+  spdlog::debug("render queue after seek size: {}",video_frame_queue_.queue.size());
 
-  spdlog::debug("audio queue before seek size: {}",audio_frame_channel_.size());
-
-  while (!audio_frame_channel_.empty()&&audio_frame_channel_.front()->present_ms<milli) {
-    audio_frame_channel_.receive();
+  spdlog::debug("audio queue before seek size: {}",audio_frame_queue_.queue.size());
+  {
+    std::scoped_lock lk{audio_frame_queue_.mtx};
+    while (!audio_frame_queue_.queue.empty()&&audio_frame_queue_.queue.front().present_ms<milli) {
+      audio_frame_queue_.semReady.acquire();
+      av_frame_free(&audio_frame_queue_.queue.front().frame);
+      audio_frame_queue_.queue.pop_front();
+      audio_frame_queue_.semEmpty.release();
+    }
   }
-  spdlog::debug("audio queue after seek size: {}",audio_frame_channel_.size());
+  spdlog::debug("audio queue after seek size: {}",audio_frame_queue_.queue.size());
 
 
 

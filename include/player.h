@@ -93,20 +93,6 @@ class Player {
     return instance_ptr;
   }
   AVFrame* tryFetchAudioFrame() {
-    // if (audio_frame_channel_.empty()) {
-    //   return nullptr;
-    // }
-    // int64_t played_ms=getPlayedMs();
-    // auto front=audio_frame_channel_.front();
-    // if (!front) {
-    //   return nullptr;
-    // }
-    // if (front.value().present_ms>=played_ms) {
-    //   std::ignore=audio_frame_channel_.receive();
-    //   return front.value().frame;
-    // }
-    // return nullptr;
-
     int64_t played_ms=getPlayedMs();
     std::scoped_lock lk{audio_frame_queue_.mtx};
     if (audio_frame_queue_.queue.empty()) {
@@ -114,10 +100,11 @@ class Player {
     }
     auto front=audio_frame_queue_.queue.front();
     if (front.present_ms>=played_ms) {
+      audio_frame_queue_.semReady.acquire();
+      audio_frame_queue_.queue.pop_front();
       audio_frame_queue_.semEmpty.release();
       return front.frame;
     }
-    audio_frame_queue_.semReady.release();
     return nullptr;
 
   }
@@ -130,10 +117,11 @@ class Player {
     }
     auto front=video_frame_queue_.queue.front();
     if (front.present_ms>=played_ms) {
+      video_frame_queue_.semReady.acquire();
+      video_frame_queue_.queue.pop_front();
       video_frame_queue_.semEmpty.release();
       return front.frame;
     }
-    video_frame_queue_.semReady.release();
     return nullptr;
   }
 
@@ -152,8 +140,22 @@ class Player {
     video_packet_channel_.close();
     audio_packet_channel_.close();
 
-    video_frame_channel_.clear();
-    audio_frame_channel_.clear();
+    {
+      std::scoped_lock lk{video_frame_queue_.mtx};
+      while (!video_frame_queue_.queue.empty()) {
+        av_frame_free(&video_frame_queue_.queue.front().frame);
+        video_frame_queue_.queue.pop_front();
+      }
+    }
+
+
+    {
+      std::scoped_lock lk{audio_frame_queue_.mtx};
+      while (!audio_frame_queue_.queue.empty()) {
+        av_frame_free(&audio_frame_queue_.queue.front().frame);
+        audio_frame_queue_.queue.pop_front();
+      }
+    }
 
     if (packet_decode_thread_) {
       packet_decode_thread_->join();
