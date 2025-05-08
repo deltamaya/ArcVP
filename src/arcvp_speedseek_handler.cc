@@ -2,12 +2,12 @@
 // Created by delta on 1/22/2025.
 //
 
-#include "arcvp.h"
+#include "player.h"
 
 
 using namespace std::chrono;
 
-void ArcVP::seekTo(std::int64_t milli){
+void Player::seekTo(std::int64_t milli){
 	std::scoped_lock lk{fmtMtx,videoMtx,audioMtx,renderQueueMtx,audioQueueMtx};
 
 	spdlog::debug("seek to {}s",milli/1000.);
@@ -60,7 +60,7 @@ void ArcVP::seekTo(std::int64_t milli){
 	}
 }
 
-void ArcVP::speedUp(){
+void Player::speedUp(){
     std::unique_lock lk{videoMtx};
 	if(speed<1) {
 		speed=1;
@@ -87,7 +87,7 @@ void ArcVP::speedUp(){
 	videoStart = system_clock::now() - milliseconds(static_cast<int>( pTimeMilli / speed ));
 }
 
-void ArcVP::speedDown(){
+void Player::speedDown(){
 	std::unique_lock lk{videoMtx};
 	if(speed>1.5) {
 		speed=1.5;

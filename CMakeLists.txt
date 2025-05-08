@@ -25,13 +25,16 @@ add_compile_definitions(-DSDL_MAIN_HANDLED)
 link_directories(${FFMPEG_LIBRARY_DIRS})
 # Define Executable
 add_executable(ArcVP main.cc
-        include/arcvp.h
+        include/Player.h
         src/arcvp_file_handler.cc
 #        src/arcvp_decode_handler.cc
         src/arcvp_playback_handler.cc
         src/arcvp_speedseek_handler.cc
         include/Channel.h
         src/arcvp_audio.cc
-        src/arcvp_video.cc)
+        src/arcvp_video.cc
+        include/sync_state.h
+        include/media_context.h
+        include/audio_device_manager.h)
 # Link Libraries
 target_link_libraries(ArcVP OpenGL::GL ${FFMPEG_LIBRARIES} spdlog::spdlog SDL2::SDL2 SDL2_ttf::SDL2_ttf)

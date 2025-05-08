@@ -1,8 +1,8 @@
 //
 // Created by delta on 5/8/2025.
 //
-#include "arcvp.h"
-void ArcVP::audioDecodeWorker(){
+#include "player.h"
+void Player::audioDecodeWorker(){
 	while (running) {
 		while (audioDecoderWorkerStatus==WorkerStatus::Idle) {
 			std::this_thread::sleep_for(10ms);
@@ -71,7 +71,7 @@ void ArcVP::audioDecodeWorker(){
 
 
 
-bool ArcVP::resampleAudioFrame(AVFrame* frame){
+bool Player::resampleAudioFrame(AVFrame* frame){
 	static SwrContext* ctx = nullptr;
 	if (!ctx) {
 		swr_alloc_set_opts2(&ctx,
@@ -103,7 +103,7 @@ bool ArcVP::resampleAudioFrame(AVFrame* frame){
 }
 
 void audioCallback(void* userdata, Uint8* stream, int len){
-	auto arc = static_cast<ArcVP *>( userdata );
+	auto arc = static_cast<Player *>( userdata );
 
 
 	while (len > 0) {
@@ -130,7 +130,7 @@ void audioCallback(void* userdata, Uint8* stream, int len){
 }
 
 
-bool ArcVP::setupAudioDevice(int sampleRate){
+bool Player::setupAudioDevice(int sampleRate){
 	SDL_AudioSpec targetSpec;
 	// Set audio settings from codec info
 	targetSpec.freq = sampleRate;
@@ -156,7 +156,7 @@ bool ArcVP::setupAudioDevice(int sampleRate){
 
 constexpr int AUDIO_SYNC_THRESHOLD = 100;
 
-void ArcVP::audioSyncTo(AVFrame* frame){
+void Player::audioSyncTo(AVFrame* frame){
 	int64_t elapsedMs = duration_cast<milliseconds>(system_clock::now() - videoStart).count();
 	int64_t presentTimeMs = ptsToTime(frame->pts, audioStream->time_base);
 	std::int64_t deltaTime = presentTimeMs - elapsedMs;

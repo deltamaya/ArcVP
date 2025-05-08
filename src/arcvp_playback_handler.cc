@@ -3,7 +3,7 @@
 //
 
 
-#include "arcvp.h"
+#include "player.h"
 
 extern "C" {
 #include <libavutil/opt.h>
@@ -19,7 +19,7 @@ void pushFinishEvent(){
 }
 
 
-void ArcVP::startPlayback(){
+void Player::startPlayback(){
 	SDL_GetDefaultAudioInfo(&audioDeviceName, &audioSpec, false);
 	spdlog::info("default audio device: {}", audioDeviceName);
 	if (!setupAudioDevice(audioCodecContext->sample_rate)) {
@@ -43,7 +43,7 @@ void ArcVP::startPlayback(){
 	SDL_PauseAudioDevice(audioDeviceID, false);
 }
 
-void ArcVP::decoderWorker(){
+void Player::decoderWorker(){
 	// demux all packets from the format context
 	while (running) {
 		while (decoderWorkerStatus == WorkerStatus::Idle) {

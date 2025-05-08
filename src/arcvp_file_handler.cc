@@ -3,7 +3,7 @@
 //
 
 
-#include "arcvp.h"
+#include "player.h"
 
 std::tuple<int, int> findAVStream(AVFormatContext* formatContext){
 	int videoStreamIndex = -1, audioStreamIndex = -1;
@@ -13,7 +13,7 @@ std::tuple<int, int> findAVStream(AVFormatContext* formatContext){
 }
 
 
-bool ArcVP::open(const char* filename){
+bool Player::open(const char* filename){
 	// open file and find stream info
 	AVFormatContext* formatContext = nullptr;
 	int ret = avformat_open_input(&formatContext, filename, nullptr, nullptr);
@@ -121,7 +121,7 @@ bool ArcVP::open(const char* filename){
 	return true;
 }
 
-void ArcVP::close(){
+void Player::close(){
 	this->formatContext = nullptr;
 
 	this->videoStream = nullptr;

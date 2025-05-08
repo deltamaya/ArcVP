@@ -1,9 +1,9 @@
 //
 // Created by delta on 5/8/2025.
 //
-#include "arcvp.h"
+#include "player.h"
 
-void ArcVP::playbackWorker(){
+void Player::playbackWorker(){
 	while (running) {
 		while (playbackWorkerStatus == WorkerStatus::Idle) {
 			std::this_thread::sleep_for(10ms);

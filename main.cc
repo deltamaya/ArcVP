@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "arcvp.h"
+#include "player.h"
 #include <SDL_ttf.h>
 
 using namespace std::chrono;
@@ -67,7 +67,7 @@ void presentFrame(AVFrame* frame){
 }
 
 
-void handleKeyDown(SDL_Window* window, ArcVP&arc, const SDL_Event&event){
+void handleKeyDown(SDL_Window* window, Player&arc, const SDL_Event&event){
 	static bool fullscreen = false;
 	int64_t t = -1;
 	switch (event.key.keysym.sym) {
@@ -99,7 +99,7 @@ void handleKeyDown(SDL_Window* window, ArcVP&arc, const SDL_Event&event){
 	}
 }
 
-ArcVP arc;
+Player arc;
 
 
 int main(){
