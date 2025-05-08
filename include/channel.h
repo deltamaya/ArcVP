@@ -7,12 +7,13 @@
 
 #include <mutex>
 #include <optional>
-#include <queue>
+#include <deque>
 #include <semaphore>
 namespace ArcVP {
+
 template <typename T, size_t MaxSize, typename DelFunc = void>
 class Channel {
-  std::queue<T> queue;
+  ::std::deque<T> queue;
   std::mutex mtx;
   std::counting_semaphore<> semEmpty = std::counting_semaphore(MaxSize);
   std::counting_semaphore<> semReady = std::counting_semaphore(0);
@@ -30,8 +31,13 @@ class Channel {
       spdlog::warn("Sending to a closed channel");
       return;
     }
-    queue.push(value);
+    queue.push_back(value);
     semReady.release();
+  }
+
+  int64_t size() {
+    std::scoped_lock lk{mtx};
+    return queue.size();
   }
 
   bool empty() {
@@ -53,21 +59,27 @@ class Channel {
     // asserts the queue is not empty
     assert(queue.size() != 0);
     std::optional<T> ret(std::move(queue.front()));
-    queue.pop();
+    queue.pop_front();
     semEmpty.release();
     return ret;
   }
 
-  std::optional<T> peek() {
+  std::optional<T> front() {
     std::scoped_lock lk{mtx};
-    if (queue.empty()) {
-      return std::nullopt;
-    }
     if (closed) {
       spdlog::warn("Peeking a closed channel");
       return std::nullopt;
     }
     return queue.front();
+  }
+
+  std::optional<T> back() {
+    std::scoped_lock lk{mtx};
+    if (closed) {
+      spdlog::warn("Peeking a closed channel");
+      return std::nullopt;
+    }
+    return queue.back();
   }
 
   void clear() {
@@ -76,7 +88,7 @@ class Channel {
       semReady.acquire();
       auto item = queue.front();
       DelFunc{}(item);
-      queue.pop();
+      queue.pop_front();
       semEmpty.release();
     }
   }

@@ -14,8 +14,8 @@ using namespace std::chrono_literals;
 enum class InstanceStatus { Idle, Playing, Seeking, Pause, Exiting };
 struct SyncState {
   steady_clock::time_point audio_start_{};
-  uint64_t sample_count_;
-  InstanceStatus status_=Idle;
+  int64_t sample_count_;
+  InstanceStatus status_=InstanceStatus::Idle;
   std::mutex mtx_;
 };
 }  // namespace ArcVP

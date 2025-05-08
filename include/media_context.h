@@ -4,8 +4,6 @@
 
 #ifndef MEDIA_CONTEXT_H
 #define MEDIA_CONTEXT_H
-
-namespace ArcVP {
 extern "C" {
 #include <SDL2/SDL.h>
 #include <libavcodec/avcodec.h>
@@ -14,6 +12,8 @@ extern "C" {
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 }
+namespace ArcVP {
+
 
 struct MediaContext {
   AVFormatContext* format_context_ = nullptr;
