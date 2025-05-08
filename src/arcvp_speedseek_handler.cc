@@ -8,26 +8,46 @@
 using namespace std::chrono;
 
 void ArcVP::seekTo(std::int64_t milli){
-	std::scoped_lock lk{fmtMtx,videoMtx,audioMtx};
+	std::scoped_lock lk{fmtMtx,videoMtx,audioMtx,renderQueueMtx,audioQueueMtx};
 
-	spdlog::debug("seek to {}ms",milli);
-	auto now=system_clock::now();
-	auto played=duration_cast<milliseconds>(now-videoStart).count();
+	spdlog::debug("seek to {}s",milli/1000.);
+	int64_t elapsed=duration_cast<milliseconds>(system_clock::now()-videoStart).count();
+
+	videoPacketQueue.clear();
+	audioPacketQueue.clear();
+	spdlog::debug("render queue before seek size: {}",renderQueue.size());
+
+	while (!renderQueue.empty()&&renderQueue.front().presentTimeMs<milli) {
+		renderQueueReady.acquire();
+		renderQueue.pop_front();
+		renderQueueEmpty.release();
+	}
+
+	spdlog::debug("render queue after seek size: {}",renderQueue.size());
+
+	spdlog::debug("audio queue before seek size: {}",audioQueue.size());
+
+	while (!audioQueue.empty()&&audioQueue.front().presentTimeMs<milli) {
+		audioQueueReady.acquire();
+		audioQueue.pop_front();
+		audioQueueEmpty.release();
+	}
+	spdlog::debug("audio queue after seek size: {}",audioQueue.size());
+
+	videoStart=system_clock::now()-milliseconds(milli);
+
 	if(videoCodecContext!=nullptr) {
-		videoPacketQueue.clear();
 		int64_t ts=timeToPts(milli,videoStream->time_base);
-		spdlog::debug("vdeo pts: {}",ts);
+		spdlog::debug("video pts: {}",ts);
 		int ret=av_seek_frame(formatContext,videoStreamIndex,ts,AVSEEK_FLAG_BACKWARD);
 		if(ret<0) {
 			spdlog::error("Unable to seek ts: {}, {}",ts,av_err2str(ret));
 			return;
 		}
 		avcodec_flush_buffers(videoCodecContext);
-		videoPacketQueue.clear();
 	}
 
 	if(audioCodecContext!=nullptr) {
-		audioPacketQueue.clear();
 		int64_t ts=timeToPts(milli,audioStream->time_base);
 		spdlog::debug("audio pts: {}",ts);
 
@@ -37,83 +57,7 @@ void ArcVP::seekTo(std::int64_t milli){
 			return;
 		}
 		avcodec_flush_buffers(audioCodecContext);
-		videoPacketQueue.clear();
 	}
-	videoPacketQueue.clear();
-	audioPacketQueue.clear();
-	AVPacket* pkt=av_packet_alloc();
-	AVFrame*frame=av_frame_alloc();
-	while (true) {
-		int ret = avcodec_receive_frame(videoCodecContext, frame);;
-		if (ret == 0) {
-			auto t=ptsToTime(frame->pts,videoStream->time_base);
-			spdlog::debug("t: {}, pts: {}",t,frame->pts);
-			if(t>=milli) {
-				break;
-			}
-			av_frame_unref(frame);
-			continue;
-		}
-		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-			av_read_frame(formatContext,pkt);
-			if (!pkt) {
-				return;
-			}
-			if(pkt->stream_index==videoStreamIndex) {
-				ret = avcodec_send_packet(videoCodecContext, pkt);
-				if (ret < 0) {
-					spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
-				}
-			}else if(pkt->stream_index==audioStreamIndex){
-				ret = avcodec_send_packet(audioCodecContext, pkt);
-				if (ret < 0) {
-					spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
-				}
-			}
-			av_packet_unref(pkt);
-		}
-		else {
-			spdlog::error("Unable to receive video frame: {}", av_err2str(ret));
-			av_frame_free(&frame);
-		}
-	}
-	audioBuffer.clear();
-	audioPos=0;
-	while (true) {
-		int ret = avcodec_receive_frame(audioCodecContext, frame);;
-		if (ret == 0) {
-			auto t=ptsToTime(frame->pts,audioStream->time_base);
-			spdlog::debug("t: {}, pts: {}",t,frame->pts);
-			if(t>=milli) {
-				break;
-			}
-			av_frame_unref(frame);
-			continue;
-		}
-		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-			av_read_frame(formatContext,pkt);
-			if (!pkt) {
-				return;
-			}
-			if(pkt->stream_index==videoStreamIndex) {
-				ret = avcodec_send_packet(videoCodecContext, pkt);
-			}else if(pkt->stream_index==audioStreamIndex){
-				ret = avcodec_send_packet(audioCodecContext, pkt);
-			}
-			if (ret < 0) {
-				spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
-			}
-			av_packet_unref(pkt);
-		}
-		else {
-			spdlog::error("Unable to receive video frame: {}", av_err2str(ret));
-			av_frame_free(&frame);
-		}
-	}
-	av_frame_free(&frame);
-	av_packet_free(&pkt);
-	videoStart=now-milliseconds(static_cast<int>( milli/speed ));
-
 }
 
 void ArcVP::speedUp(){

@@ -11,27 +11,11 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-using namespace std::chrono;
-
-void pushNextFrameEvent(void* data){
-	SDL_Event event;
-	event.type = ARCVP_NEXTFRAME_EVENT;
-	event.user.data1 = data;
-	SDL_PushEvent(&event);
-}
 
 void pushFinishEvent(){
 	SDL_Event event;
 	event.type = ARCVP_FINISH_EVENT;
 	SDL_PushEvent(&event);
-}
-
-int64_t ptsToTime(int64_t pts, AVRational timebase){
-	return pts * 1000. * timebase.num / timebase.den;
-}
-
-int64_t timeToPts(int64_t milli, AVRational timebase){
-	return milli / 1000. * timebase.den / timebase.num;
 }
 
 
@@ -42,7 +26,7 @@ void ArcVP::startPlayback(){
 		spdlog::info("Unable to setup audio device: {}", audioDeviceName);
 		return;
 	}
-	videoStart=system_clock::now();
+	videoStart = system_clock::now();
 
 	if (!decoderThread) {
 		decoderThread = std::make_unique<std::thread>([this]{ this->decoderWorker(); });
@@ -50,45 +34,49 @@ void ArcVP::startPlayback(){
 	if (!playbackThread) {
 		playbackThread = std::make_unique<std::thread>([this]{ this->playbackWorker(); });
 	}
-	decoderWorkerStatus=WorkerStatus::Working;
-	playbackWorkerStatus=WorkerStatus::Working;
+	if (!audioDecodeThread) {
+		audioDecodeThread = std::make_unique<std::thread>([this]{ this->audioDecodeWorker(); });
+	}
+	decoderWorkerStatus = WorkerStatus::Working;
+	playbackWorkerStatus = WorkerStatus::Working;
+	audioDecoderWorkerStatus=WorkerStatus::Working;
 	SDL_PauseAudioDevice(audioDeviceID, false);
-
 }
 
 void ArcVP::decoderWorker(){
 	// demux all packets from the format context
 	while (running) {
-		while (decoderWorkerStatus==WorkerStatus::Idle) {
+		while (decoderWorkerStatus == WorkerStatus::Idle) {
 			std::this_thread::sleep_for(10ms);
 		}
-		if (decoderWorkerStatus==WorkerStatus::Exiting) {
+		if (decoderWorkerStatus == WorkerStatus::Exiting) {
 			break;
 		}
-		AVPacket* pkt=av_packet_alloc();
+		AVPacket* pkt = av_packet_alloc();
 		if (!pkt) {
 			spdlog::error("Fail to allocate AVPacket");
 			std::exit(1);
 		}
-		int ret;
-		{
+		int ret; {
 			std::scoped_lock lk{fmtMtx};
-			ret=av_read_frame(formatContext,pkt);
+			ret = av_read_frame(formatContext, pkt);
 		}
-		if (ret<0) {
+		if (ret < 0) {
 			av_packet_free(&pkt);
-			if (ret==AVERROR_EOF){
-				decoderWorkerStatus=WorkerStatus::Idle;
+			if (ret == AVERROR_EOF) {
+				decoderWorkerStatus = WorkerStatus::Idle;
 				continue;
 			}
 			spdlog::error("Error reading frame: {}", av_err2str(ret));
 			std::exit(1);
 		}
-		if (pkt->stream_index==videoStreamIndex) {
+		if (pkt->stream_index == videoStreamIndex) {
 			videoPacketQueue.send(pkt);
-		}else if (pkt->stream_index==audioStreamIndex) {
+		}
+		else if (pkt->stream_index == audioStreamIndex) {
 			audioPacketQueue.send(pkt);
-		}else {
+		}
+		else {
 			spdlog::warn("Unknown packet index: {}", pkt->stream_index);
 			av_packet_free(&pkt);
 		}
@@ -96,204 +84,3 @@ void ArcVP::decoderWorker(){
 	spdlog::info("Decoder Thread Exited");
 }
 
-
-void ArcVP::playbackWorker(){
-	while (running) {
-		while (playbackWorkerStatus==WorkerStatus::Idle) {
-			std::this_thread::sleep_for(10ms);
-		}
-		if (playbackWorkerStatus==WorkerStatus::Exiting) {
-			break;
-		}
-		AVFrame* frame = av_frame_alloc();
-		int ret=0;
-		while (true) {
-			spdlog::debug("trying to receive frame");
-			std::scoped_lock video{videoMtx};
-			spdlog::debug("video mutex acquired");
-			ret = avcodec_receive_frame(videoCodecContext, frame);
-			if (ret == 0) {
-				break;
-			}
-			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-				auto pkt = videoPacketQueue.receive();
-				if (!pkt) {
-					spdlog::info("Consumer exited due to closed channel");
-					goto end;
-				}
-				ret = avcodec_send_packet(videoCodecContext, pkt.value());
-				if (ret < 0) {
-					spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
-				}
-				av_packet_free(&pkt.value());
-			}
-			else {
-				spdlog::error("Unable to receive video frame: {}", av_err2str(ret));
-				av_frame_free(&frame);
-			}
-		}
-
-		//
-		// auto pTime = videoStart + milliseconds(static_cast<int>( pTimeMilli / speed ));
-		// prevFramePts = frame->pts;
-		//
-		// std::this_thread::sleep_until(pTime);
-		// pushNextFrameEvent(frame);
-
-		{
-			spdlog::debug("try acquiring empty sem");
-			renderQueueEmpty.acquire();
-			int64_t presentTimeMs = ptsToTime(frame->pts, videoStream->time_base);
-			std::scoped_lock renderQueueLk{renderQueueMtx};
-			spdlog::debug("render queue mutex acquired");
-
-			renderQueue.emplace_back(frame,presentTimeMs);
-			renderQueueReady.release();
-		}
-
-	}
-	end:
-	spdlog::info("Playback Thread Exited");
-
-}
-
-
-
-bool ArcVP::resampleAudioFrame(AVFrame* frame){
-	static SwrContext* ctx = nullptr;
-	if (!ctx) {
-		swr_alloc_set_opts2(&ctx,
-							&audioCodecParams->ch_layout,
-							AV_SAMPLE_FMT_FLT,
-							audioCodecParams->sample_rate,
-							&audioCodecParams->ch_layout,
-							audioCodecContext->sample_fmt,
-							audioCodecParams->sample_rate,
-							0,
-							nullptr);
-
-		swr_init(ctx);
-	}
-	int outSamples = av_rescale_rnd(swr_get_delay(ctx, audioCodecContext->sample_rate) +
-									frame->nb_samples,
-									audioCodecContext->sample_rate,
-									audioCodecContext->sample_rate,
-									AV_ROUND_UP);
-
-	audioBuffer.resize(outSamples * audioCodecContext->ch_layout.nb_channels * sizeof(float));
-	uint8_t* outBuffer = audioBuffer.data();
-	swr_convert(ctx,
-				&outBuffer,
-				outSamples,
-				frame->data,
-				frame->nb_samples);
-	return true;
-}
-void audioCallback(void* userdata, Uint8* stream, int len){
-	auto arc = static_cast<ArcVP *>( userdata );
-	static AVFrame* frame = av_frame_alloc();
-
-
-	while (len > 0) {
-		std::unique_lock lk{arc->audioMtx};
-		auto&pos = arc->audioPos;
-		int bytesCopied = 0;
-		if (pos >= arc->audioBuffer.size()) {
-			/* We have already sent all our data; get more */
-			while (true) {
-				int ret = avcodec_receive_frame(arc->audioCodecContext, frame);
-				if (ret == 0) {
-					break;
-				}
-				if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-					auto pkt = arc->audioPacketQueue.receive();
-
-					if (!pkt) {
-						return;
-					}
-
-					avcodec_send_packet(arc->audioCodecContext, pkt.value());
-
-					av_packet_free(&pkt.value());
-				}
-				else {
-					spdlog::error("Unable to receive video frame: {}", av_err2str(ret));
-					av_frame_free(&frame);
-				}
-			}
-			pos -= arc->audioBuffer.size();
-			arc->resampleAudioFrame(frame);
-			// spdlog::debug("frame pts: {}",frame->pts);
-
-			arc->audioSyncTo(frame);
-		}
-		// spdlog::debug("audio frame pts: {}",frame->pts);
-		bytesCopied = std::min(arc->audioBuffer.size() - pos, static_cast<std::size_t>( len ));
-		memcpy(stream, arc->audioBuffer.data() + pos, bytesCopied);
-		len -= bytesCopied;
-		stream += bytesCopied;
-		pos += bytesCopied;
-	}
-}
-
-
-bool ArcVP::setupAudioDevice(int sampleRate){
-	SDL_AudioSpec targetSpec;
-	// Set audio settings from codec info
-	targetSpec.freq = sampleRate;
-	targetSpec.format = AUDIO_F32;
-	targetSpec.channels = audioCodecContext->ch_layout.nb_channels;
-	targetSpec.silence = 0;
-	targetSpec.samples = 4096;
-	targetSpec.callback = audioCallback;
-	targetSpec.userdata = this;
-	audioDeviceID = SDL_OpenAudioDevice(audioDeviceName,
-	                                    false,
-	                                    &targetSpec,
-	                                    &audioSpec,
-	                                    false);
-	if (audioDeviceID <= 0) {
-		spdlog::error("SDL_OpenAudio: {}", SDL_GetError());
-		return false;
-	}
-
-	return true;
-}
-
-
-constexpr int AUDIO_SYNC_THRESHOLD = 100;
-
-void ArcVP::audioSyncTo(AVFrame* frame){
-	auto pTime = videoStart + milliseconds(static_cast<int>( ptsToTime(frame->pts, audioStream->time_base) / speed ));
-	auto now = system_clock::now();
-	auto nowms = duration_cast<milliseconds>(now.time_since_epoch()).count();
-	auto pTimems = duration_cast<milliseconds>(pTime.time_since_epoch()).count();
-	spdlog::debug("audio: ptime - now = {}ms", pTimems - nowms);
-	std::int64_t deltaTime = std::abs(duration_cast<milliseconds>(now - pTime).count());
-	if (deltaTime < AUDIO_SYNC_THRESHOLD) {
-		return;
-	}
-	if (now < pTime) {
-		spdlog::debug("audio callback sleep: {}ms", deltaTime);
-		std::this_thread::sleep_until(pTime);
-	}
-	else {
-		auto sampleRate = audioCodecParams->sample_rate;
-		int64_t samples = deltaTime * sampleRate / 1000.;
-		audioBuffer.erase(
-			std::remove_if(
-				begin(audioBuffer),
-				end(audioBuffer),
-				[=, i = 0, cnt = 0](std::uint8_t)mutable{
-					if (cnt >= samples)return false;
-					if (i++ & 1) {
-						cnt++;
-						return true;
-					}
-					return false;
-				}
-			),
-			end(audioBuffer)
-		);
-	}
-}

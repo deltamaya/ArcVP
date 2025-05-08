@@ -59,17 +59,16 @@ class ArcVP{
 	AVCodecContext* audioCodecContext = nullptr;
 	const AVCodecParameters* videoCodecParams = nullptr;
 	const AVCodecParameters* audioCodecParams = nullptr;
-	std::unique_ptr<std::thread> decoderThread = nullptr, playbackThread = nullptr;
+	std::unique_ptr<std::thread> decoderThread = nullptr, playbackThread = nullptr,audioDecodeThread=nullptr;
 	Channel<AVPacket *,256, DisposeAVPacket> videoPacketQueue, audioPacketQueue;
-	Channel<ArcVPEvent,256> msg;
 
 	const AVStream *videoStream = nullptr, *audioStream = nullptr;
 	int videoStreamIndex = -1, audioStreamIndex = -1;
 
 	std::atomic_bool running,pause;
-	std::atomic<WorkerStatus> decoderWorkerStatus=WorkerStatus::Idle,playbackWorkerStatus=WorkerStatus::Idle;
+	std::atomic<WorkerStatus> decoderWorkerStatus=WorkerStatus::Idle,playbackWorkerStatus=WorkerStatus::Idle,audioDecoderWorkerStatus=WorkerStatus::Idle;
 
-	std::mutex fmtMtx{}, videoMtx{}, audioMtx{},renderQueueMtx{};
+	std::mutex fmtMtx{}, videoMtx{}, audioMtx{},renderQueueMtx{},audioQueueMtx{};
 
 	SDL_AudioDeviceID audioDeviceID = -1;
 	char* audioDeviceName = nullptr;
@@ -89,12 +88,15 @@ class ArcVP{
 	};
 
 	std::deque<RenderEntry> renderQueue;
-	std::counting_semaphore<> renderQueueReady,renderQueueEmpty=std::counting_semaphore(300);
+	std::deque<RenderEntry> audioQueue;
+	std::counting_semaphore<> renderQueueReady,renderQueueEmpty,audioQueueReady,audioQueueEmpty;
 
 
 	void decoderWorker();
 
 	void playbackWorker();
+
+	void audioDecodeWorker();
 
 	bool setupAudioDevice(int);
 
@@ -103,7 +105,7 @@ public:
 
 	friend void audioCallback(void* userdata, Uint8* stream, int len);
 
-	ArcVP(): renderQueueReady(0){
+	ArcVP(): renderQueueReady(0),renderQueueEmpty(400),audioQueueReady(0),audioQueueEmpty(500){
 		running = true;
 	}
 
@@ -112,6 +114,7 @@ public:
 
 		decoderWorkerStatus=WorkerStatus::Exiting;
 		playbackWorkerStatus=WorkerStatus::Exiting;
+		audioDecoderWorkerStatus=WorkerStatus::Exiting;
 
 		videoPacketQueue.close();
 		audioPacketQueue.close();
@@ -125,12 +128,24 @@ public:
 			}
 		}
 
+		{
+			std::scoped_lock lk{audioQueueMtx};
+			while (!audioQueue.empty()) {
+				audioQueueReady.acquire();
+				audioQueue.pop_front();
+				audioQueueEmpty.release();
+			}
+		}
+
 
 		if (decoderThread) {
 			decoderThread->join();
 		}
 		if (playbackThread) {
 			playbackThread->join();
+		}
+		if (audioDecodeThread) {
+			audioDecodeThread->join();
 		}
 	}
 
@@ -148,6 +163,26 @@ public:
 			return front.frame;
 		}
 		renderQueueReady.release();
+		return nullptr;
+	}
+
+	AVFrame* tryFetchAudioFrame(){
+		auto milli=duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()-videoStart).count();
+		bool ok=audioQueueReady.try_acquire();
+		if (!ok) {
+			return nullptr;
+		}
+		std::scoped_lock lk{audioQueueMtx};
+
+		auto front=audioQueue.front();
+		spdlog::debug("elapsed: {}, calc: {}",milli/1000.,front.presentTimeMs/1000.);
+
+		if (front.presentTimeMs<milli) {
+			audioQueueEmpty.release();
+			audioQueue.pop_front();
+			return front.frame;
+		}
+		audioQueueReady.release();
 		return nullptr;
 	}
 
@@ -189,5 +224,14 @@ public:
 };
 
 
+using namespace std::chrono;
+
+inline int64_t ptsToTime(int64_t pts, AVRational timebase){
+	return pts * 1000. * timebase.num / timebase.den;
+}
+
+inline int64_t timeToPts(int64_t milli, AVRational timebase){
+	return milli / 1000. * timebase.den / timebase.num;
+}
 
 #endif //ARCVP_H
