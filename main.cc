@@ -59,7 +59,7 @@ void presentFrame(AVFrame* frame) {
   SDL_RenderPresent(renderer);
 }
 
-void handleKeyDown(SDL_Window* window, ArcVP::Player& arc,
+void handleKeyDown(SDL_Window* window, ArcVP::Player* arc,
                    const SDL_Event& event) {
   static bool fullscreen = false;
   int64_t t = -1;
@@ -74,12 +74,12 @@ void handleKeyDown(SDL_Window* window, ArcVP::Player& arc,
       presentFrame(frame);
       break;
     case SDLK_LEFT:
-      t = arc.getPlayedMs();
-      arc.seekTo(std::max(t - 5000, 0ll));
+      t = arc->getPlayedMs();
+      arc->seekTo(std::max(t - 5000, 0ll));
       break;
     case SDLK_RIGHT:
-      t = arc.getPlayedMs();
-      arc.seekTo(t + 5000);
+      t = arc->getPlayedMs();
+      arc->seekTo(t + 5000);
       break;
     // case SDLK_UP:
     //   arc.speedUp();
@@ -92,7 +92,7 @@ void handleKeyDown(SDL_Window* window, ArcVP::Player& arc,
   }
 }
 
-ArcVP::Player arc;
+ArcVP::Player* arc=ArcVP::Player::instance();
 
 int main() {
   spdlog::set_level(spdlog::level::debug);
@@ -124,9 +124,9 @@ int main() {
   SDL_Color textColor = {255, 255, 255, 0};
   SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), textColor);
 
-  arc.open("test.mp4");
+  arc->open("test.mp4");
 
-  auto [width, height] = arc.getWH();
+  auto [width, height] = arc->getWH();
   spdlog::info("w: {}, h: {}", width, height);
   state.src_width = width;
   state.src_height = height;
@@ -146,12 +146,12 @@ int main() {
 
   handleResize();
 
-  arc.startPlayback();
+  arc->startPlayback();
 
   SDL_Event event;
   while (running) {
     {
-      AVFrame* frame = arc.tryFetchVideoFrame();
+      AVFrame* frame = arc->tryFetchVideoFrame();
       if (frame) {
         presentFrame(frame);
         av_frame_free(&frame);

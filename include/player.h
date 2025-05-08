@@ -82,9 +82,15 @@ class Player {
   void audioDecodeThreadWorker();
 
   bool setupAudioDevice(int);
-
+  Player() = default;
+  inline static Player* instance_ptr=nullptr;
  public:
-
+  static Player* instance() {
+    if (!instance_ptr) {
+      instance_ptr=new Player();
+    }
+    return instance_ptr;
+  }
   AVFrame* tryFetchAudioFrame() {
     int64_t played_ms=getPlayedMs();
     auto front=audio_frame_channel_.front();
@@ -115,7 +121,6 @@ class Player {
 
   friend void audioCallback(void* userdata, Uint8* stream, int len);
 
-  Player() = default;
 
   ~Player() {
     sync_state_.status_ = InstanceStatus::Exiting;
