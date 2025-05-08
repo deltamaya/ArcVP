@@ -5,7 +5,6 @@
 namespace ArcVP {
 void Player::audioDecodeThreadWorker() {
   while (true) {
-    std::unique_lock sync_lock{sync_state_.mtx_};
     while (audio_decode_worker_status_ == WorkerStatus::Idle) {
       std::this_thread::sleep_for(10ms);
     }
@@ -46,10 +45,11 @@ void Player::audioDecodeThreadWorker() {
         ptsToTime(frame->pts, media_context_.audio_stream_->time_base);
 
     {
+      std::scoped_lock lk{audio_frame_queue_.mtx};
       // spdlog::debug("lock done");
       if (present_ms < played_ms ||
-          !audio_frame_channel_.empty() &&
-              audio_frame_channel_.back()->present_ms >= present_ms) {
+          !audio_frame_queue_.queue.empty() &&
+              audio_frame_queue_.queue.back().present_ms >= present_ms) {
         spdlog::info("Video: Dropped frame at {}s", present_ms / 1000.);
         av_frame_free(&frame);
         continue;
@@ -57,9 +57,12 @@ void Player::audioDecodeThreadWorker() {
     }
 
     // spdlog::debug("audio try acquire empty semaphore");
+    audio_frame_queue_.semEmpty.acquire();
     // spdlog::debug("semaphore acquired");
 
-    audio_frame_channel_.send({frame, present_ms});
+    audio_frame_queue_.queue.emplace_back(frame,present_ms);
+    audio_frame_queue_.semReady.release();
+
   }
 end:
   spdlog::info("Audio Decoder Thread Exited");
@@ -106,7 +109,7 @@ void audioCallback(void* userdata, Uint8* stream, int len) {
 
       audioPos = 0;
       arc->resampleAudioFrame(frame);
-      arc->audioSyncTo(frame);
+      // arc->audioSyncTo(frame);
     }
     bytesCopied = std::min(arc->audio_buffer_.size() - audioPos,
                            static_cast<std::size_t>(len));

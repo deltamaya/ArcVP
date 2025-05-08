@@ -17,6 +17,7 @@
 
 #include "audio_device.h"
 #include "channel.h"
+#include "frame_queue.h"
 #include "media_context.h"
 #include "sync_state.h"
 
@@ -63,12 +64,12 @@ class Player {
   struct DisposeRenderEntry {
     void operator()(RenderEntry entry) const { av_frame_free(&entry.frame); }
   };
-  Channel<RenderEntry, 64, DisposeRenderEntry> video_frame_channel_,
-      audio_frame_channel_;
 
-  AudioDevice audio_device_;
+  FrameQueue audio_frame_queue_{100},video_frame_queue_{200};
 
-  std::vector<uint8_t> audio_buffer_;
+  AudioDevice audio_device_{};
+
+  std::vector<uint8_t> audio_buffer_{};
 
   int width = -1, height = -1;
 
@@ -92,28 +93,47 @@ class Player {
     return instance_ptr;
   }
   AVFrame* tryFetchAudioFrame() {
+    // if (audio_frame_channel_.empty()) {
+    //   return nullptr;
+    // }
+    // int64_t played_ms=getPlayedMs();
+    // auto front=audio_frame_channel_.front();
+    // if (!front) {
+    //   return nullptr;
+    // }
+    // if (front.value().present_ms>=played_ms) {
+    //   std::ignore=audio_frame_channel_.receive();
+    //   return front.value().frame;
+    // }
+    // return nullptr;
+
     int64_t played_ms=getPlayedMs();
-    auto front=audio_frame_channel_.front();
-    if (!front) {
+    std::scoped_lock lk{audio_frame_queue_.mtx};
+    if (audio_frame_queue_.queue.empty()) {
       return nullptr;
     }
-    if (front.value().present_ms>played_ms) {
-      std::ignore=audio_frame_channel_.receive();
-      return front.value().frame;
+    auto front=audio_frame_queue_.queue.front();
+    if (front.present_ms>=played_ms) {
+      audio_frame_queue_.semEmpty.release();
+      return front.frame;
     }
+    audio_frame_queue_.semReady.release();
     return nullptr;
+
   }
 
   AVFrame* tryFetchVideoFrame() {
     int64_t played_ms=getPlayedMs();
-    auto front=video_frame_channel_.front();
-    if (!front) {
+    std::scoped_lock lk{video_frame_queue_.mtx};
+    if (video_frame_queue_.queue.empty()) {
       return nullptr;
     }
-    if (front.value().present_ms>played_ms) {
-      std::ignore=video_frame_channel_.receive();
-      return front.value().frame;
+    auto front=video_frame_queue_.queue.front();
+    if (front.present_ms>=played_ms) {
+      video_frame_queue_.semEmpty.release();
+      return front.frame;
     }
+    video_frame_queue_.semReady.release();
     return nullptr;
   }
 

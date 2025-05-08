@@ -42,10 +42,11 @@ void Player::videoDecodeThreadWorker() {
         ptsToTime(frame->pts, media_context_.audio_stream_->time_base);
 
     {
+      std::scoped_lock lk{video_frame_queue_.mtx};
       // spdlog::debug("lock done");
       if (present_ms < played_ms ||
-          !audio_frame_channel_.empty() &&
-              audio_frame_channel_.back()->present_ms >= present_ms) {
+          !video_frame_queue_.queue.empty() &&
+              video_frame_queue_.queue.back().present_ms >= present_ms) {
         spdlog::info("Video: Dropped frame at {}s", present_ms / 1000.);
         av_frame_free(&frame);
         continue;
@@ -55,7 +56,9 @@ void Player::videoDecodeThreadWorker() {
     // spdlog::debug("audio try acquire empty semaphore");
     // spdlog::debug("semaphore acquired");
 
-    audio_frame_channel_.send({frame, present_ms});
+    video_frame_queue_.semEmpty.acquire();
+    video_frame_queue_.queue.emplace_back(frame, present_ms);
+    video_frame_queue_.semReady.release();
   }
 end:
   spdlog::info("Playback Thread Exited");

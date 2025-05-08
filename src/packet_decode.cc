@@ -73,7 +73,7 @@ void Player::packetDecodeThreadWorker(){
       video_packet_channel_.send(pkt);
     }
     else if (pkt->stream_index == media_context_.audio_stream_index_) {
-      video_packet_channel_.send(pkt);
+      audio_packet_channel_.send(pkt);
     }
     else {
       spdlog::warn("Unknown packet index: {}", pkt->stream_index);
