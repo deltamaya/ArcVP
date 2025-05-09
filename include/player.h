@@ -164,7 +164,18 @@ class Player {
 
   void startPlayback();
 
-  void togglePause();
+  void togglePause() {
+    std::scoped_lock lk{sync_state_.mtx_};
+    if (sync_state_.status_==InstanceStatus::Pause) {
+      unpause();
+    }
+    else if (sync_state_.status_==InstanceStatus::Playing){
+      pause();
+    }else {
+      spdlog::warn("Toggle pause state in invalid status");
+      std::exit(1);
+    }
+  }
   void pause();
   void unpause();
 

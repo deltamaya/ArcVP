@@ -133,12 +133,10 @@ bool Player::open(const char *filename) {
 }
 
 void Player::close() {
+  std::scoped_lock lk{sync_state_.mtx_};
   pause();
-  {
-    std::scoped_lock lk{sync_state_.mtx_};
-    sync_state_.status_ = InstanceStatus::Idle;
-    sync_state_.sample_count_ = 0;
-  }
+  sync_state_.status_ = InstanceStatus::Idle;
+  sync_state_.sample_count_ = 0;
 
   packet_decode_worker_.status = WorkerStatus::Idle;
   audio_decode_worker_.status = WorkerStatus::Idle;

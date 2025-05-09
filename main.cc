@@ -64,9 +64,9 @@ void handleKeyDown(SDL_Window* window, ArcVP::Player* arc,
   static bool fullscreen = false;
   int64_t t = -1;
   switch (event.key.keysym.sym) {
-    // case SDLK_SPACE:
-    //   arc.togglePause();
-    //   break;
+    case SDLK_SPACE:
+      arc->togglePause();
+      break;
     case SDLK_f:
       fullscreen = !fullscreen;
       SDL_SetWindowFullscreen(window, fullscreen);
