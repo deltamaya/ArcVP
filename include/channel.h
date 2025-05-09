@@ -5,9 +5,9 @@
 #ifndef CHANNEL_H
 #define CHANNEL_H
 
+#include <deque>
 #include <mutex>
 #include <optional>
-#include <deque>
 #include <semaphore>
 namespace ArcVP {
 

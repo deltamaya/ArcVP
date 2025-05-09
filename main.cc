@@ -92,7 +92,7 @@ void handleKeyDown(SDL_Window* window, ArcVP::Player* arc,
   }
 }
 
-ArcVP::Player* arc=ArcVP::Player::instance();
+ArcVP::Player* arc = ArcVP::Player::instance();
 
 int main() {
   spdlog::set_level(spdlog::level::debug);

@@ -33,7 +33,6 @@ extern "C" {
 
 namespace ArcVP {
 
-
 int64_t ptsToTime(int64_t pts, AVRational timebase);
 
 int64_t timeToPts(int64_t milli, AVRational timebase);
@@ -43,11 +42,11 @@ enum ArcVPEvent {
 };
 
 class Player {
-
   SyncState sync_state_;
   MediaContext media_context_;
 
-  DecodeWorker audio_decode_worker_, video_decode_worker_, packet_decode_worker_;
+  DecodeWorker audio_decode_worker_, video_decode_worker_,
+      packet_decode_worker_;
 
   struct DisposeAVPacket {
     void operator()(AVPacket* pkt) const { av_packet_free(&pkt); }
@@ -82,7 +81,7 @@ class Player {
     return instance_ptr;
   }
   AVFrame* tryFetchAudioFrame() {
-    std::scoped_lock lk{audio_frame_queue_.mtx,sync_state_.mtx_};
+    std::scoped_lock lk{audio_frame_queue_.mtx, sync_state_.mtx_};
     int64_t played_ms = getPlayedMs();
     if (audio_frame_queue_.queue.empty()) {
       return nullptr;
@@ -95,13 +94,16 @@ class Player {
       if (front.present_ms >= played_ms) {
         return front.frame;
       }
-    }while (!audio_frame_queue_.queue.empty());
+    } while (!audio_frame_queue_.queue.empty());
 
     return nullptr;
   }
 
   AVFrame* tryFetchVideoFrame() {
-    std::scoped_lock lk{video_frame_queue_.mtx,sync_state_.mtx_};
+    std::scoped_lock lk{video_frame_queue_.mtx, sync_state_.mtx_};
+    if (sync_state_.status_ != InstanceStatus::Playing) {
+      return nullptr;
+    }
     int64_t played_ms = getPlayedMs();
     if (video_frame_queue_.queue.empty()) {
       return nullptr;
@@ -139,7 +141,6 @@ class Player {
       video_decode_worker_.cv.notify_all();
     }
 
-
     video_frame_queue_.clear();
     audio_frame_queue_.clear();
 
@@ -158,7 +159,7 @@ class Player {
   void exit() {
     close();
     delete instance_ptr;
-    instance_ptr=nullptr;
+    instance_ptr = nullptr;
   }
 
   void startPlayback();

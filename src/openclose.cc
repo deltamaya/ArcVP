@@ -135,13 +135,10 @@ bool Player::open(const char *filename) {
 void Player::close() {
   pause();
   {
-
     std::scoped_lock lk{sync_state_.mtx_};
     sync_state_.status_ = InstanceStatus::Idle;
     sync_state_.sample_count_ = 0;
-
   }
-
 
   packet_decode_worker_.status = WorkerStatus::Idle;
   audio_decode_worker_.status = WorkerStatus::Idle;
@@ -152,8 +149,6 @@ void Player::close() {
   // waits for the worker to put packet into the channel
   video_packet_channel_.clear();
   audio_packet_channel_.clear();
-
-
 
   {
     std::scoped_lock media_lock{media_context_.format_mtx_,

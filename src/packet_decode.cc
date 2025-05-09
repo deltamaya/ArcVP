@@ -2,27 +2,28 @@
 // Created by delta on 1/22/2025.
 //
 
-
 #include "player.h"
 
 extern "C" {
-#include <libavutil/opt.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 }
 
-namespace  ArcVP {
-void pushFinishEvent(){
+namespace ArcVP {
+void pushFinishEvent() {
   SDL_Event event;
   event.type = ARCVP_FINISH_EVENT;
   SDL_PushEvent(&event);
 }
 
-void Player::packetDecodeThreadWorker(){
+void Player::packetDecodeThreadWorker() {
   // demux all packets from the format context
   while (true) {
     std::unique_lock status_lock{packet_decode_worker_.mtx};
-    packet_decode_worker_.cv.wait(status_lock,[this]{return packet_decode_worker_.status!=WorkerStatus::Idle;});
+    packet_decode_worker_.cv.wait(status_lock, [this] {
+      return packet_decode_worker_.status != WorkerStatus::Idle;
+    });
     if (packet_decode_worker_.status == WorkerStatus::Exiting) {
       break;
     }
@@ -47,22 +48,20 @@ void Player::packetDecodeThreadWorker(){
       std::exit(1);
     }
     if (pkt->stream_index == media_context_.video_stream_index_) {
-      bool ok=video_packet_channel_.send(pkt);
+      bool ok = video_packet_channel_.send(pkt);
       if (!ok) {
         packet_decode_worker_.status = WorkerStatus::Exiting;
       }
-    }
-    else if (pkt->stream_index == media_context_.audio_stream_index_) {
-      bool ok=audio_packet_channel_.send(pkt);
+    } else if (pkt->stream_index == media_context_.audio_stream_index_) {
+      bool ok = audio_packet_channel_.send(pkt);
       if (!ok) {
         packet_decode_worker_.status = WorkerStatus::Exiting;
       }
-    }
-    else {
+    } else {
       spdlog::warn("Unknown packet index: {}", pkt->stream_index);
       av_packet_free(&pkt);
     }
   }
   spdlog::info("Packet decode thread exited");
 }
-}
+}  // namespace ArcVP

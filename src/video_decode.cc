@@ -6,7 +6,9 @@ namespace ArcVP {
 void Player::videoDecodeThreadWorker() {
   while (true) {
     std::unique_lock status_lock{video_decode_worker_.mtx};
-    video_decode_worker_.cv.wait(status_lock,[this]{return video_decode_worker_.status!=WorkerStatus::Idle;});
+    video_decode_worker_.cv.wait(status_lock, [this] {
+      return video_decode_worker_.status != WorkerStatus::Idle;
+    });
     if (video_decode_worker_.status == WorkerStatus::Exiting) {
       break;
     }
@@ -22,7 +24,7 @@ void Player::videoDecodeThreadWorker() {
         auto pkt = video_packet_channel_.receive();
         if (!pkt) {
           spdlog::info("Video Consumer exited due to closed channel");
-          video_decode_worker_.status=WorkerStatus::Exiting;
+          video_decode_worker_.status = WorkerStatus::Exiting;
           goto end;
         }
         ret = avcodec_send_packet(media_context_.video_codec_context_,
@@ -41,7 +43,7 @@ void Player::videoDecodeThreadWorker() {
         ptsToTime(frame->pts, media_context_.video_stream_->time_base);
 
     {
-      std::scoped_lock lk{video_frame_queue_.mtx,sync_state_.mtx_};
+      std::scoped_lock lk{video_frame_queue_.mtx, sync_state_.mtx_};
       int64_t played_ms = getPlayedMs();
       // spdlog::debug("lock done");
       if (present_ms < played_ms ||

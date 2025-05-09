@@ -6,29 +6,28 @@
 #define DECODE_WORKER_H
 #include <memory>
 #include <thread>
+
 #include "player.h"
 enum class WorkerStatus { Working, Idle, Exiting };
 namespace ArcVP {
-  struct DecodeWorker {
-    std::unique_ptr<std::thread> th=nullptr;
-    std::mutex mtx{};
-    std::condition_variable cv;
-    WorkerStatus status=WorkerStatus::Idle;
+struct DecodeWorker {
+  std::unique_ptr<std::thread> th = nullptr;
+  std::mutex mtx{};
+  std::condition_variable cv;
+  WorkerStatus status = WorkerStatus::Idle;
 
-    explicit DecodeWorker() {
+  explicit DecodeWorker() {}
 
-    }
+  template <typename Fn, typename... Args>
+  void spawn(Fn&& func, Args&&... args) {
+    status = WorkerStatus::Working;
+    th = std::make_unique<std::thread>(std::forward<Fn>(func),
+                                       std::forward<Args>(args)...);
+  }
 
-    template<typename Fn,typename... Args>
-    void spawn(Fn&& func,Args&& ...args) {
-      status=WorkerStatus::Working;
-      th=std::make_unique<std::thread>(std::forward<Fn>(func),std::forward<Args>(args)...);
-    }
-
-    void join() {
-      if (th)
-        th->join();
-    }
-  };
-}
-#endif //DECODE_WORKER_H
+  void join() {
+    if (th) th->join();
+  }
+};
+}  // namespace ArcVP
+#endif  // DECODE_WORKER_H

@@ -2,9 +2,9 @@
 // Created by delta on 7 Oct 2024.
 //
 
-#include "video-reader.hh"
 #include "imgui.h"
 #include "portable-file-dialogs.h"
+#include "video-reader.hh"
 
 static int speedIndex = 4;
 static float speeds[] = {0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2};
@@ -28,7 +28,6 @@ void VideoReader::resetSpeed() {
   speedIndex = 4;
 }
 
-
 void VideoReader::controlPanel() {
   int totalSeconds = durationMilli / 1000;
   int totalMinutes = totalSeconds / 60;
@@ -47,10 +46,8 @@ void VideoReader::controlPanel() {
   ImVec2 sz = ImGui::GetWindowSize();
   controlPanelSizeWidth = sz.x;
   controlPanelSizeHeight = sz.y;
-  spdlog::debug("control panel pos: {} {} {} {}",
-                controlPanelPosX,
-                controlPanelPosY,
-                controlPanelSizeWidth,
+  spdlog::debug("control panel pos: {} {} {} {}", controlPanelPosX,
+                controlPanelPosY, controlPanelSizeWidth,
                 controlPanelSizeHeight);
   if (ImGui::Button("Choose File")) {
     close();
@@ -84,14 +81,16 @@ void VideoReader::controlPanel() {
 
   if (ImGui::Button("Pause/Unpause")) {
     if (!playbackThread_) {
-      pfd::message msg("Notice", "Please choose a video to play.", pfd::choice::ok);
+      pfd::message msg("Notice", "Please choose a video to play.",
+                       pfd::choice::ok);
     } else {
       togglePause();
     }
   }
   if (ImGui::Button("Slow Down")) {
     if (!playbackThread_) {
-      pfd::message msg("Notice", "Please choose a video to play.", pfd::choice::ok);
+      pfd::message msg("Notice", "Please choose a video to play.",
+                       pfd::choice::ok);
     } else {
       setPlaybackSpeed(getNextSpeedDown());
     }
@@ -99,7 +98,8 @@ void VideoReader::controlPanel() {
   ImGui::SameLine();
   if (ImGui::Button("Speed Up")) {
     if (!playbackThread_) {
-      pfd::message msg("Notice", "Please choose a video to play.", pfd::choice::ok);
+      pfd::message msg("Notice", "Please choose a video to play.",
+                       pfd::choice::ok);
     } else {
       setPlaybackSpeed(getNextSpeedUp());
     }
@@ -108,7 +108,8 @@ void VideoReader::controlPanel() {
   ImGui::Text("Speed: %.2f", playbackSpeed);
   static std::int64_t lastFrameUpdateTime = SDL_GetTicks64();
   if (playbackThread_) {
-    if (ImGui::SliderFloat("Video Progress", &playbackProgress, 0., 1., "", ImGuiSliderFlags_AlwaysClamp)) {
+    if (ImGui::SliderFloat("Video Progress", &playbackProgress, 0., 1., "",
+                           ImGuiSliderFlags_AlwaysClamp)) {
       int estimatePlaytimeSeconds = durationMilli / 1000. * playbackProgress;
       int estimatePlaytimeMinutes = estimatePlaytimeSeconds / 60;
       estimatePlaytimeSeconds %= 60;
@@ -135,12 +136,7 @@ void VideoReader::controlPanel() {
     }
   }
   ImGui::ProgressBar(playbackProgress);
-  ImGui::Text("Playback Time: %02d:%02d:%02d / %02d:%02d:%02d",
-              curHour,
-              curMinutes,
-              curSeconds,
-              totalHour,
-              totalMinutes,
-              totalSeconds);
+  ImGui::Text("Playback Time: %02d:%02d:%02d / %02d:%02d:%02d", curHour,
+              curMinutes, curSeconds, totalHour, totalMinutes, totalSeconds);
   ImGui::End();
 }
