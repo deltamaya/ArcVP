@@ -133,20 +133,27 @@ bool Player::open(const char *filename) {
 }
 
 void Player::close() {
-  std::scoped_lock lk{sync_state_.mtx_, packet_decode_worker_.mtx,
-                      audio_decode_worker_.mtx, video_decode_worker_.mtx};
-  sync_state_.status_ = InstanceStatus::Idle;
-  sync_state_.sample_count_ = 0;
+  pause();
+  {
 
-  // waits for the worker to put packet into the channel
+    std::scoped_lock lk{sync_state_.mtx_};
+    sync_state_.status_ = InstanceStatus::Idle;
+    sync_state_.sample_count_ = 0;
+
+  }
+
+
   packet_decode_worker_.status = WorkerStatus::Idle;
+  audio_decode_worker_.status = WorkerStatus::Idle;
+  video_decode_worker_.status = WorkerStatus::Idle;
+
+  video_frame_queue_.clear();
+  audio_frame_queue_.clear();
+  // waits for the worker to put packet into the channel
   video_packet_channel_.clear();
   audio_packet_channel_.clear();
 
-  audio_decode_worker_.status = WorkerStatus::Idle;
-  video_decode_worker_.status = WorkerStatus::Idle;
-  video_frame_queue_.clear();
-  audio_frame_queue_.clear();
+
 
   {
     std::scoped_lock media_lock{media_context_.format_mtx_,

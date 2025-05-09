@@ -28,7 +28,6 @@ namespace ArcVP {
     void join() {
       if (th)
         th->join();
-      status=WorkerStatus::Idle;
     }
   };
 }

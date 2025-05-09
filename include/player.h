@@ -126,34 +126,25 @@ class Player {
     {
       std::scoped_lock status_lock{packet_decode_worker_.mtx};
       packet_decode_worker_.status = WorkerStatus::Exiting;
+      packet_decode_worker_.cv.notify_all();
     }
     {
       std::scoped_lock status_lock{audio_decode_worker_.mtx};
       audio_decode_worker_.status = WorkerStatus::Exiting;
+      audio_decode_worker_.cv.notify_all();
     }
     {
       std::scoped_lock status_lock{video_decode_worker_.mtx};
       video_decode_worker_.status = WorkerStatus::Exiting;
+      video_decode_worker_.cv.notify_all();
     }
+
+
+    video_frame_queue_.clear();
+    audio_frame_queue_.clear();
 
     video_packet_channel_.close();
     audio_packet_channel_.close();
-
-    {
-      std::scoped_lock lk{video_frame_queue_.mtx};
-      while (!video_frame_queue_.queue.empty()) {
-        av_frame_free(&video_frame_queue_.queue.front().frame);
-        video_frame_queue_.queue.pop_front();
-      }
-    }
-
-    {
-      std::scoped_lock lk{audio_frame_queue_.mtx};
-      while (!audio_frame_queue_.queue.empty()) {
-        av_frame_free(&audio_frame_queue_.queue.front().frame);
-        audio_frame_queue_.queue.pop_front();
-      }
-    }
 
     packet_decode_worker_.join();
     audio_decode_worker_.join();
@@ -173,6 +164,8 @@ class Player {
   void startPlayback();
 
   void togglePause();
+  void pause();
+  void unpause();
 
   void seekTo(std::int64_t milli);
 

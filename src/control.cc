@@ -19,4 +19,11 @@ void Player::startPlayback(){
 
   SDL_PauseAudioDevice(audio_device_.id, false);
 }
+
+void Player::pause() {
+  std::scoped_lock lk{sync_state_.mtx_};
+  sync_state_.status_=InstanceStatus::Pause;
+  SDL_PauseAudioDevice(audio_device_.id,true);
+}
+
 }
