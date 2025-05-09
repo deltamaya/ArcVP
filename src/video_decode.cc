@@ -39,7 +39,7 @@ void Player::videoDecodeThreadWorker() {
     }
     // spdlog::debug("audio try lock audio queue");
     int64_t present_ms =
-        ptsToTime(frame->pts, media_context_.audio_stream_->time_base);
+        ptsToTime(frame->pts, media_context_.video_stream_->time_base);
 
     {
       std::scoped_lock lk{video_frame_queue_.mtx};

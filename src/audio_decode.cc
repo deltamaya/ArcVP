@@ -60,9 +60,8 @@ void Player::audioDecodeThreadWorker() {
     audio_frame_queue_.semEmpty.acquire();
     // spdlog::debug("semaphore acquired");
 
-    audio_frame_queue_.queue.emplace_back(frame,present_ms);
+    audio_frame_queue_.queue.emplace_back(frame, present_ms);
     audio_frame_queue_.semReady.release();
-
   }
 end:
   spdlog::info("Audio Decoder Thread Exited");
@@ -106,6 +105,9 @@ void audioCallback(void* userdata, Uint8* stream, int len) {
         spdlog::info("AudioCallback: no available frame");
         return;
       }
+      // auto t =
+      //     ptsToTime(frame->pts, arc->media_context_.audio_stream_->time_base);
+      // spdlog::debug("playing audio frame: {}ms",t);
 
       audioPos = 0;
       arc->resampleAudioFrame(frame);
@@ -118,7 +120,9 @@ void audioCallback(void* userdata, Uint8* stream, int len) {
     stream += bytesCopied;
     audioPos += bytesCopied;
     std::scoped_lock sync_lock{arc->sync_state_.mtx_};
-    arc->sync_state_.sample_count_ += (bytesCopied) / sizeof(float);
+    arc->sync_state_.sample_count_ +=
+        bytesCopied / sizeof(float) /
+        arc->media_context_.audio_codec_params_->ch_layout.nb_channels;
   }
 }
 

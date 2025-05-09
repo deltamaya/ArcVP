@@ -36,6 +36,7 @@ void Player::startPlayback(){
   if (!audio_decode_thread_) {
     audio_decode_thread_ = std::make_unique<std::thread>([this]{ this->audioDecodeThreadWorker(); });
   }
+  sync_state_.status_=InstanceStatus::Playing;
   packet_decode_worker_status_ = WorkerStatus::Working;
   video_decode_worker_status_ = WorkerStatus::Working;
   audio_decode_worker_status_=WorkerStatus::Working;

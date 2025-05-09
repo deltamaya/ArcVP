@@ -65,7 +65,7 @@ class Player {
     void operator()(RenderEntry entry) const { av_frame_free(&entry.frame); }
   };
 
-  FrameQueue audio_frame_queue_{100},video_frame_queue_{200};
+  FrameQueue audio_frame_queue_{100}, video_frame_queue_{200};
 
   AudioDevice audio_device_{};
 
@@ -84,39 +84,42 @@ class Player {
 
   bool setupAudioDevice(int);
   Player() = default;
-  inline static Player* instance_ptr=nullptr;
+  inline static Player* instance_ptr = nullptr;
+
  public:
   static Player* instance() {
     if (!instance_ptr) {
-      instance_ptr=new Player();
+      instance_ptr = new Player();
     }
     return instance_ptr;
   }
   AVFrame* tryFetchAudioFrame() {
-    int64_t played_ms=getPlayedMs();
+    int64_t played_ms = getPlayedMs();
     std::scoped_lock lk{audio_frame_queue_.mtx};
     if (audio_frame_queue_.queue.empty()) {
       return nullptr;
     }
-    auto front=audio_frame_queue_.queue.front();
-    if (front.present_ms>=played_ms) {
+    do {
+      auto front = audio_frame_queue_.queue.front();
       audio_frame_queue_.semReady.acquire();
       audio_frame_queue_.queue.pop_front();
       audio_frame_queue_.semEmpty.release();
-      return front.frame;
-    }
-    return nullptr;
+      if (front.present_ms >= played_ms) {
+        return front.frame;
+      }
+    }while (!audio_frame_queue_.queue.empty());
 
+    return nullptr;
   }
 
   AVFrame* tryFetchVideoFrame() {
-    int64_t played_ms=getPlayedMs();
+    int64_t played_ms = getPlayedMs();
     std::scoped_lock lk{video_frame_queue_.mtx};
     if (video_frame_queue_.queue.empty()) {
       return nullptr;
     }
-    auto front=video_frame_queue_.queue.front();
-    if (front.present_ms>=played_ms) {
+    auto front = video_frame_queue_.queue.front();
+    if (front.present_ms <= played_ms) {
       video_frame_queue_.semReady.acquire();
       video_frame_queue_.queue.pop_front();
       video_frame_queue_.semEmpty.release();
@@ -128,7 +131,6 @@ class Player {
   bool resampleAudioFrame(AVFrame* frame);
 
   friend void audioCallback(void* userdata, Uint8* stream, int len);
-
 
   ~Player() {
     sync_state_.status_ = InstanceStatus::Exiting;
@@ -147,7 +149,6 @@ class Player {
         video_frame_queue_.queue.pop_front();
       }
     }
-
 
     {
       std::scoped_lock lk{audio_frame_queue_.mtx};
@@ -190,7 +191,7 @@ class Player {
 
   int64_t getPlayedMs() {
     std::scoped_lock lk{sync_state_.mtx_, media_context_.audio_codec_mtx_};
-    return sync_state_.sample_count_ /
+    return sync_state_.sample_count_ * 1000. /
            media_context_.audio_codec_params_->sample_rate;
   }
 };
