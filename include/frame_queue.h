@@ -22,6 +22,16 @@ namespace ArcVP {
     explicit FrameQueue(int size):semReady(0),semEmpty(size) {
 
     }
+
+    void clear() {
+      std::scoped_lock lk{mtx};
+      while (!queue.empty()) {
+        semReady.acquire();
+        av_frame_free(&queue.front().frame);
+        queue.pop_front();
+        semEmpty.release();
+      }
+    }
   };
 }
 

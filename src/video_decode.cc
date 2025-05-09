@@ -5,13 +5,11 @@
 namespace ArcVP {
 void Player::videoDecodeThreadWorker() {
   while (true) {
-    while (video_decode_worker_status_ == WorkerStatus::Idle) {
-      std::this_thread::sleep_for(10ms);
-    }
-    if (video_decode_worker_status_ == WorkerStatus::Exiting) {
+    std::unique_lock status_lock{video_decode_worker_.mtx};
+    video_decode_worker_.cv.wait(status_lock,[this]{return video_decode_worker_.status!=WorkerStatus::Idle;});
+    if (video_decode_worker_.status == WorkerStatus::Exiting) {
       break;
     }
-    int64_t played_ms = getPlayedMs();
     AVFrame* frame = av_frame_alloc();
     int ret = 0;
     while (true) {
@@ -24,6 +22,7 @@ void Player::videoDecodeThreadWorker() {
         auto pkt = video_packet_channel_.receive();
         if (!pkt) {
           spdlog::info("Video Consumer exited due to closed channel");
+          video_decode_worker_.status=WorkerStatus::Exiting;
           goto end;
         }
         ret = avcodec_send_packet(media_context_.video_codec_context_,
@@ -42,7 +41,8 @@ void Player::videoDecodeThreadWorker() {
         ptsToTime(frame->pts, media_context_.video_stream_->time_base);
 
     {
-      std::scoped_lock lk{video_frame_queue_.mtx};
+      std::scoped_lock lk{video_frame_queue_.mtx,sync_state_.mtx_};
+      int64_t played_ms = getPlayedMs();
       // spdlog::debug("lock done");
       if (present_ms < played_ms ||
           !video_frame_queue_.queue.empty() &&
@@ -61,6 +61,6 @@ void Player::videoDecodeThreadWorker() {
     video_frame_queue_.semReady.release();
   }
 end:
-  spdlog::info("Playback Thread Exited");
+  spdlog::info("Video decode thread exited");
 }
 }  // namespace ArcVP

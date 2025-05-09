@@ -20,19 +20,20 @@ class Channel {
   std::atomic_bool closed = false;
 
  public:
-  void send(const T& value) {
+  bool send(const T& value) {
     if (closed) {
       spdlog::warn("Sending to a closed channel");
-      return;
+      return false;
     }
     semEmpty.acquire();
     std::scoped_lock lk{mtx};
     if (closed) {
       spdlog::warn("Sending to a closed channel");
-      return;
+      return false;
     }
     queue.push_back(value);
     semReady.release();
+    return true;
   }
 
   int64_t size() {
@@ -98,8 +99,6 @@ class Channel {
     }
     closed = true;
     clear();
-    // to wake up receive func
-    semReady.release();
   }
 
   bool is_closed() const { return closed; }

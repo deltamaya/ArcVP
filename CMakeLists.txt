@@ -34,6 +34,8 @@ add_executable(ArcVP main.cc
         include/sync_state.h
         include/media_context.h
         include/audio_device.h
-        include/frame_queue.h)
+        include/frame_queue.h
+        include/decode_worker.h
+        src/control.cc)
 # Link Libraries
 target_link_libraries(ArcVP OpenGL::GL ${FFMPEG_LIBRARIES} spdlog::spdlog SDL2::SDL2 SDL2_ttf::SDL2_ttf)

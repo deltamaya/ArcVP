@@ -5,13 +5,11 @@
 namespace ArcVP {
 void Player::audioDecodeThreadWorker() {
   while (true) {
-    while (audio_decode_worker_status_ == WorkerStatus::Idle) {
-      std::this_thread::sleep_for(10ms);
+    std::unique_lock status_lock{audio_decode_worker_.mtx};
+    audio_decode_worker_.cv.wait(status_lock,[this]{return audio_decode_worker_.status!=WorkerStatus::Idle;});
+    if (audio_decode_worker_.status == WorkerStatus::Exiting) {
+      break;
     }
-    if (audio_decode_worker_status_ == WorkerStatus::Exiting) {
-      goto end;
-    }
-    int64_t played_ms = getPlayedMs();
     AVFrame* frame = av_frame_alloc();
     int ret = 0;
     while (true) {
@@ -26,6 +24,7 @@ void Player::audioDecodeThreadWorker() {
         // spdlog::debug("packet acquired");
         if (!pkt) {
           spdlog::info("Audio Consumer exited due to closed channel");
+          audio_decode_worker_.status=WorkerStatus::Exiting;
           goto end;
         }
         ret = avcodec_send_packet(media_context_.audio_codec_context_,
@@ -45,7 +44,8 @@ void Player::audioDecodeThreadWorker() {
         ptsToTime(frame->pts, media_context_.audio_stream_->time_base);
 
     {
-      std::scoped_lock lk{audio_frame_queue_.mtx};
+      std::scoped_lock lk{audio_frame_queue_.mtx,sync_state_.mtx_};
+      int64_t played_ms = getPlayedMs();
       // spdlog::debug("lock done");
       if (present_ms < played_ms ||
           !audio_frame_queue_.queue.empty() &&
@@ -63,8 +63,8 @@ void Player::audioDecodeThreadWorker() {
     audio_frame_queue_.queue.emplace_back(frame, present_ms);
     audio_frame_queue_.semReady.release();
   }
-end:
-  spdlog::info("Audio Decoder Thread Exited");
+  end:
+  spdlog::info("Audio decode thread exited");
 }
 
 bool Player::resampleAudioFrame(AVFrame* frame) {
@@ -149,11 +149,12 @@ bool Player::setupAudioDevice(int sampleRate) {
 
 constexpr int AUDIO_SYNC_THRESHOLD = 100;
 
-void Player::audioSyncTo(AVFrame* frame) {
-  int64_t elapsed_ms = getPlayedMs();
+void Player::audioSyncTo(AVFrame* frame,int64_t played_ms) {
   int64_t presentTimeMs =
       ptsToTime(frame->pts, media_context_.audio_stream_->time_base);
-  std::int64_t deltaTime = presentTimeMs - elapsed_ms;
+
+
+  std::int64_t deltaTime = presentTimeMs - played_ms;
   // spdlog::debug("Audio: deltaTime: {}ms",deltaTime);
   if (std::abs(deltaTime) < AUDIO_SYNC_THRESHOLD) {
     return;

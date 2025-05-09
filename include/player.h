@@ -17,6 +17,7 @@
 
 #include "audio_device.h"
 #include "channel.h"
+#include "decode_worker.h"
 #include "frame_queue.h"
 #include "media_context.h"
 #include "sync_state.h"
@@ -31,9 +32,7 @@ extern "C" {
 }
 
 namespace ArcVP {
-struct DisposeAVPacket {
-  void operator()(AVPacket* pkt) const { av_packet_free(&pkt); }
-};
+
 
 int64_t ptsToTime(int64_t pts, AVRational timebase);
 
@@ -44,27 +43,17 @@ enum ArcVPEvent {
 };
 
 class Player {
-  enum class WorkerStatus { Working, Idle, Exiting };
 
   SyncState sync_state_;
   MediaContext media_context_;
 
-  std::unique_ptr<std::thread> packet_decode_thread_{}, video_decode_thread_{},
-      audio_decode_thread_{};
-  std::atomic<WorkerStatus> packet_decode_worker_status_ = WorkerStatus::Idle,
-                            video_decode_worker_status_ = WorkerStatus::Idle,
-                            audio_decode_worker_status_ = WorkerStatus::Idle;
+  DecodeWorker audio_decode_worker_, video_decode_worker_, packet_decode_worker_;
+
+  struct DisposeAVPacket {
+    void operator()(AVPacket* pkt) const { av_packet_free(&pkt); }
+  };
   Channel<AVPacket*, 256, DisposeAVPacket> video_packet_channel_,
       audio_packet_channel_;
-
-  struct RenderEntry {
-    AVFrame* frame = nullptr;
-    int64_t present_ms = -1;
-  };
-  struct DisposeRenderEntry {
-    void operator()(RenderEntry entry) const { av_frame_free(&entry.frame); }
-  };
-
   FrameQueue audio_frame_queue_{100}, video_frame_queue_{200};
 
   AudioDevice audio_device_{};
@@ -73,7 +62,6 @@ class Player {
 
   int width = -1, height = -1;
 
-  int64_t audioPos = 0, prevFramePts = AV_NOPTS_VALUE;
   double speed = 1.;
 
   void packetDecodeThreadWorker();
@@ -94,8 +82,8 @@ class Player {
     return instance_ptr;
   }
   AVFrame* tryFetchAudioFrame() {
+    std::scoped_lock lk{audio_frame_queue_.mtx,sync_state_.mtx_};
     int64_t played_ms = getPlayedMs();
-    std::scoped_lock lk{audio_frame_queue_.mtx};
     if (audio_frame_queue_.queue.empty()) {
       return nullptr;
     }
@@ -113,8 +101,8 @@ class Player {
   }
 
   AVFrame* tryFetchVideoFrame() {
+    std::scoped_lock lk{video_frame_queue_.mtx,sync_state_.mtx_};
     int64_t played_ms = getPlayedMs();
-    std::scoped_lock lk{video_frame_queue_.mtx};
     if (video_frame_queue_.queue.empty()) {
       return nullptr;
     }
@@ -135,9 +123,18 @@ class Player {
   ~Player() {
     sync_state_.status_ = InstanceStatus::Exiting;
 
-    packet_decode_worker_status_ = WorkerStatus::Exiting;
-    video_decode_worker_status_ = WorkerStatus::Exiting;
-    audio_decode_worker_status_ = WorkerStatus::Exiting;
+    {
+      std::scoped_lock status_lock{packet_decode_worker_.mtx};
+      packet_decode_worker_.status = WorkerStatus::Exiting;
+    }
+    {
+      std::scoped_lock status_lock{audio_decode_worker_.mtx};
+      audio_decode_worker_.status = WorkerStatus::Exiting;
+    }
+    {
+      std::scoped_lock status_lock{video_decode_worker_.mtx};
+      video_decode_worker_.status = WorkerStatus::Exiting;
+    }
 
     video_packet_channel_.close();
     audio_packet_channel_.close();
@@ -158,20 +155,20 @@ class Player {
       }
     }
 
-    if (packet_decode_thread_) {
-      packet_decode_thread_->join();
-    }
-    if (video_decode_thread_) {
-      video_decode_thread_->join();
-    }
-    if (audio_decode_thread_) {
-      audio_decode_thread_->join();
-    }
+    packet_decode_worker_.join();
+    audio_decode_worker_.join();
+    video_decode_worker_.join();
   }
 
   bool open(const char*);
 
   void close();
+
+  void exit() {
+    close();
+    delete instance_ptr;
+    instance_ptr=nullptr;
+  }
 
   void startPlayback();
 
@@ -183,14 +180,13 @@ class Player {
 
   void speedDown();
 
-  void audioSyncTo(AVFrame* frame);
+  void audioSyncTo(AVFrame* frame, int64_t played_ms);
 
   std::int64_t getAudioPlayTime(std::int64_t bytesPlayed);
 
   std::tuple<int, int> getWH() { return std::make_tuple(width, height); }
 
   int64_t getPlayedMs() {
-    std::scoped_lock lk{sync_state_.mtx_, media_context_.audio_codec_mtx_};
     return sync_state_.sample_count_ * 1000. /
            media_context_.audio_codec_params_->sample_rate;
   }
