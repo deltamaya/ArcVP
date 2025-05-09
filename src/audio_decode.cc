@@ -102,7 +102,7 @@ void audioCallback(void* userdata, Uint8* stream, int len) {
   while (len > 0) {
     int bytesCopied = 0;
     if (audioPos >= arc->audio_buffer_.size()) {
-      AVFrame* frame = arc->tryFetchAudioFrame();
+      auto [frame,present_ms] = arc->tryFetchAudioFrame();
       if (!frame) {
         spdlog::info("AudioCallback: no available frame");
         return;
@@ -114,7 +114,13 @@ void audioCallback(void* userdata, Uint8* stream, int len) {
 
       audioPos = 0;
       arc->resampleAudioFrame(frame);
-      // arc->audioSyncTo(frame);
+      int64_t played_ms=arc->getPlayedMs();
+      int64_t delta_time=present_ms-played_ms;
+      if (delta_time>50) {
+        int64_t count=(delta_time/1000.)*arc->media_context_.audio_codec_params_->sample_rate*2*4;
+        arc->audio_buffer_.insert(arc->audio_buffer_.begin(),count,0);
+      }
+      // arc->audioSyncTo(frame,present_ms);
     }
     bytesCopied = std::min(arc->audio_buffer_.size() - audioPos,
                            static_cast<std::size_t>(len));
@@ -152,11 +158,10 @@ bool Player::setupAudioDevice(int sampleRate) {
 
 constexpr int AUDIO_SYNC_THRESHOLD = 100;
 
-void Player::audioSyncTo(AVFrame* frame, int64_t played_ms) {
-  int64_t presentTimeMs =
-      ptsToTime(frame->pts, media_context_.audio_stream_->time_base);
-
-  std::int64_t deltaTime = presentTimeMs - played_ms;
+void Player::audioSyncTo(AVFrame* frame, int64_t present_ms) {
+  std::scoped_lock lk{sync_state_.mtx_};
+  int64_t played_ms=getPlayedMs();
+  std::int64_t deltaTime = present_ms - played_ms;
   // spdlog::debug("Audio: deltaTime: {}ms",deltaTime);
   if (std::abs(deltaTime) < AUDIO_SYNC_THRESHOLD) {
     return;

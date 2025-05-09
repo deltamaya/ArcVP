@@ -10,40 +10,19 @@ using namespace std::chrono;
 namespace ArcVP {
 void Player::seekTo(std::int64_t milli){
   std::scoped_lock lk{sync_state_.mtx_};
+  pause();
 
   spdlog::debug("seek to {}s",milli/1000.);
 
   video_packet_channel_.clear();
   audio_packet_channel_.clear();
 
-  spdlog::debug("render queue before seek size: {}",video_frame_queue_.queue.size());
 
-  {
-    std::scoped_lock lk{video_frame_queue_.mtx};
-    while (!video_frame_queue_.queue.empty()&&video_frame_queue_.queue.front().present_ms<milli) {
-      video_frame_queue_.semReady.acquire();
-      av_frame_free(&video_frame_queue_.queue.front().frame);
-      video_frame_queue_.queue.pop_front();
-      video_frame_queue_.semEmpty.release();
-    }
-  }
-
-  spdlog::debug("render queue after seek size: {}",video_frame_queue_.queue.size());
-
-  spdlog::debug("audio queue before seek size: {}",audio_frame_queue_.queue.size());
-  {
-    std::scoped_lock lk{audio_frame_queue_.mtx};
-    while (!audio_frame_queue_.queue.empty()&&audio_frame_queue_.queue.front().present_ms<milli) {
-      audio_frame_queue_.semReady.acquire();
-      av_frame_free(&audio_frame_queue_.queue.front().frame);
-      audio_frame_queue_.queue.pop_front();
-      audio_frame_queue_.semEmpty.release();
-    }
-  }
-  spdlog::debug("audio queue after seek size: {}",audio_frame_queue_.queue.size());
+  video_frame_queue_.clear();
+  audio_frame_queue_.clear();
 
 
-
+  std::scoped_lock media_lock{media_context_.format_mtx_,media_context_.video_codec_mtx_,media_context_.audio_codec_mtx_};
   if(media_context_.video_codec_context_!=nullptr) {
     int64_t ts=timeToPts(milli,media_context_.video_stream_->time_base);
     spdlog::debug("video pts: {}",ts);
@@ -66,6 +45,8 @@ void Player::seekTo(std::int64_t milli){
     }
     avcodec_flush_buffers(media_context_.audio_codec_context_);
   }
+  sync_state_.sample_count_=(milli/1000.)*media_context_.audio_codec_params_->sample_rate;
+  unpause();
 }
 
 // void Player::speedUp(){

@@ -80,11 +80,11 @@ class Player {
     }
     return instance_ptr;
   }
-  AVFrame* tryFetchAudioFrame() {
+  std::pair<AVFrame*,int64_t> tryFetchAudioFrame() {
     std::scoped_lock lk{audio_frame_queue_.mtx, sync_state_.mtx_};
     int64_t played_ms = getPlayedMs();
     if (audio_frame_queue_.queue.empty()) {
-      return nullptr;
+      return {nullptr,0};
     }
     do {
       auto front = audio_frame_queue_.queue.front();
@@ -92,11 +92,11 @@ class Player {
       audio_frame_queue_.queue.pop_front();
       audio_frame_queue_.semEmpty.release();
       if (front.present_ms >= played_ms) {
-        return front.frame;
+        return {front.frame,front.present_ms};
       }
     } while (!audio_frame_queue_.queue.empty());
 
-    return nullptr;
+    return {nullptr,0};
   }
 
   AVFrame* tryFetchVideoFrame() {
