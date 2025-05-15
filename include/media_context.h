@@ -5,7 +5,7 @@
 #ifndef MEDIA_CONTEXT_H
 #define MEDIA_CONTEXT_H
 extern "C" {
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>

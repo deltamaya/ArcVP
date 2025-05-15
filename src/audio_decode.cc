@@ -139,15 +139,10 @@ bool Player::setupAudioDevice(int sampleRate) {
   SDL_AudioSpec targetSpec;
   // Set audio settings from codec info
   targetSpec.freq = sampleRate;
-  targetSpec.format = AUDIO_F32;
+  targetSpec.format = SDL_AUDIO_F32;
   targetSpec.channels =
       media_context_.audio_codec_context_->ch_layout.nb_channels;
-  targetSpec.silence = 0;
-  targetSpec.samples = 4096;
-  targetSpec.callback = audioCallback;
-  targetSpec.userdata = this;
-  audio_device_.id = SDL_OpenAudioDevice(audio_device_.name, false, &targetSpec,
-                                         &audio_device_.spec, false);
+  audio_device_.id = SDL_OpenAudioDevice(audio_device_.id,&audio_device_.spec);
   if (audio_device_.id <= 0) {
     spdlog::error("SDL_OpenAudio: {}", SDL_GetError());
     return false;

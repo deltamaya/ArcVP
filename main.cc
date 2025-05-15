@@ -1,5 +1,4 @@
-#include <SDL_ttf.h>
-
+#include <SDL3_ttf/SDL_ttf.h>
 #include <iostream>
 
 #include "player.h"
@@ -11,7 +10,7 @@ typedef struct VideoState {
   int src_height;         // 原始视频高度
   int window_width;       // 窗口宽度
   int window_height;      // 窗口高度
-  SDL_Rect display_rect;  // 显示区域
+  SDL_FRect display_rect;  // 显示区域
 } VideoState;
 
 VideoState state = {.window_width = 1280, .window_height = 720};
@@ -55,7 +54,7 @@ void presentFrame(AVFrame* frame) {
                        frame->data[1], frame->linesize[1],   // U plane
                        frame->data[2], frame->linesize[2]);  // V plane
   SDL_RenderClear(renderer);
-  SDL_RenderCopy(renderer, videoTexture, nullptr, &state.display_rect);
+  SDL_RenderTexture(renderer, videoTexture, nullptr,&state.display_rect);
   SDL_RenderPresent(renderer);
 }
 
@@ -63,11 +62,11 @@ void handleKeyDown(SDL_Window* window, ArcVP::Player* arc,
                    const SDL_Event& event) {
   static bool fullscreen = false;
   int64_t t = -1;
-  switch (event.key.keysym.sym) {
+  switch (event.key.key) {
     case SDLK_SPACE:
       arc->togglePause();
       break;
-    case SDLK_f:
+    case SDLK_F:
       fullscreen = !fullscreen;
       SDL_SetWindowFullscreen(window, fullscreen);
       handleResize();
@@ -102,27 +101,26 @@ int main() {
     return 1;
   }
 
-  if (TTF_Init() == -1) {
-    spdlog::error("TTF_Init: {}", TTF_GetError());
+  if (!TTF_Init()) {
+    spdlog::error("TTF_Init: {}", SDL_GetError());
     return 1;
   }
 
-  window = SDL_CreateWindow("Arc VP", SDL_WINDOWPOS_CENTERED,
-                            SDL_WINDOWPOS_CENTERED, state.window_width,
+  window = SDL_CreateWindow("Arc VP", state.window_width,
                             state.window_height, SDL_WINDOW_RESIZABLE);
 
-  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+  renderer = SDL_CreateRenderer(window, nullptr);
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
   constexpr int fontSize = 50;
 
   TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/CascadiaCode.ttf", fontSize);
   if (!font) {
-    spdlog::error("Failed to load font: {}\n", TTF_GetError());
+    spdlog::error("Failed to load font: {}\n", SDL_GetError());
     return 1;
   }
   std::string text = "Hello, SDL!";
   SDL_Color textColor = {255, 255, 255, 0};
-  SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), textColor);
+  SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(),0,textColor);
 
   arc->open("test.mp4");
 
@@ -159,19 +157,15 @@ int main() {
     }
     while (SDL_PollEvent(&event)) {
       switch (event.type) {
-        case SDL_QUIT:
+        case SDL_EVENT_QUIT:
           running = false;
           break;
-        case SDL_WINDOWEVENT:
-          if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
-            handleResize();
-            presentFrame(frame);
-          } else if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-            handleResize();
-            presentFrame(frame);
-          }
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+          handleResize();
+          presentFrame(frame);
           break;
-        case SDL_KEYDOWN:
+        case SDL_EVENT_KEY_DOWN:
           handleKeyDown(window, arc, event);
           break;
         // case ARCVP_NEXTFRAME_EVENT:

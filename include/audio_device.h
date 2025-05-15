@@ -4,13 +4,13 @@
 #pragma once
 extern "C" {
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 }
 namespace ArcVP {
 
 struct AudioDevice {
   SDL_AudioDeviceID id = -1;
-  char* name = nullptr;
+  const char* name = nullptr;
   SDL_AudioSpec spec{};
 };
 }  // namespace ArcVP

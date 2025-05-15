@@ -5,14 +5,11 @@ file(GLOB IMGUI_SRC "lib/imgui/*.cpp")
 file(GLOB ArcVP_SRC "./src/*")
 # Find packages
 
-set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};D:/SDL2_ttf-2.24.0/cmake")
-
-message(${CMAKE_PREFIX_PATH})
 
 find_package(OpenGL REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
-find_package(SDL2 REQUIRED)
-find_package(SDL2_ttf CONFIG REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
+find_package(SDL3_ttf CONFIG REQUIRED)
 
 set(FFMPEG_LIBRARIES avcodec avformat avutil swscale swresample)
 set(FFMPEG_INCLUDE_DIRS "D:/FFmpeg/include")
@@ -38,4 +35,4 @@ add_executable(ArcVP main.cc
         include/decode_worker.h
         src/control.cc)
 # Link Libraries
-target_link_libraries(ArcVP OpenGL::GL ${FFMPEG_LIBRARIES} spdlog::spdlog SDL2::SDL2 SDL2_ttf::SDL2_ttf)
+target_link_libraries(ArcVP OpenGL::GL ${FFMPEG_LIBRARIES} spdlog::spdlog SDL3::SDL3 SDL3_ttf::SDL3_ttf)

@@ -4,7 +4,8 @@
 #include "player.h"
 namespace ArcVP {
 void Player::startPlayback() {
-  SDL_GetDefaultAudioInfo(&audio_device_.name, &audio_device_.spec, false);
+  SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&audio_device_.spec,nullptr);
+  audio_device_.name=SDL_GetAudioDeviceName(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK);
   spdlog::info("default audio device: {}", audio_device_.name);
   if (!setupAudioDevice(media_context_.audio_codec_context_->sample_rate)) {
     spdlog::info("Unable to setup audio device: {}", audio_device_.name);
@@ -17,17 +18,17 @@ void Player::startPlayback() {
 
   sync_state_.status_ = InstanceStatus::Playing;
 
-  SDL_PauseAudioDevice(audio_device_.id, false);
+  SDL_PauseAudioDevice(audio_device_.id);
 }
 
 void Player::pause() {
   sync_state_.status_ = InstanceStatus::Pause;
-  SDL_PauseAudioDevice(audio_device_.id, true);
+  SDL_PauseAudioDevice(audio_device_.id);
 }
 
 void Player::unpause() {
   sync_state_.status_ = InstanceStatus::Playing;
-  SDL_PauseAudioDevice(audio_device_.id, false);
+  SDL_ResumeAudioDevice(audio_device_.id);
 }
 
 }  // namespace ArcVP

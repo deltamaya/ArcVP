@@ -23,7 +23,7 @@
 #include "sync_state.h"
 
 extern "C" {
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
@@ -37,7 +37,7 @@ int64_t ptsToTime(int64_t pts, AVRational timebase);
 
 int64_t timeToPts(int64_t milli, AVRational timebase);
 enum ArcVPEvent {
-  ARCVP_NEXTFRAME_EVENT = SDL_USEREVENT + 1,
+  ARCVP_NEXTFRAME_EVENT = SDL_EVENT_USER + 1,
   ARCVP_FINISH_EVENT,
 };
 
