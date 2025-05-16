@@ -4,9 +4,14 @@
 
 #ifndef DECODE_WORKER_H
 #define DECODE_WORKER_H
+extern "C"{
+#include <libavcodec/packet.h>
+}
+
 #include <memory>
 #include <thread>
 
+#include "frame_queue.h"
 #include "player.h"
 enum class WorkerStatus { Working, Idle, Exiting };
 namespace ArcVP {
@@ -14,9 +19,14 @@ struct DecodeWorker {
   std::unique_ptr<std::thread> th = nullptr;
   std::mutex mtx{};
   std::condition_variable cv;
+  FrameQueue output_queue;
+  struct DisposeAVPacket {
+    void operator()(AVPacket* pkt) const { av_packet_free(&pkt); }
+  };
+  Channel<AVPacket*,200,DisposeAVPacket> packet_chan{};
   WorkerStatus status = WorkerStatus::Idle;
 
-  explicit DecodeWorker() {}
+  explicit DecodeWorker() :output_queue(100){}
 
   template <typename Fn, typename... Args>
   void spawn(Fn&& func, Args&&... args) {
@@ -25,8 +35,8 @@ struct DecodeWorker {
                                        std::forward<Args>(args)...);
   }
 
-  void join() {
-    if (th) th->join();
+  void join() const {
+    if (th&&th->joinable()) th->join();
   }
 };
 }  // namespace ArcVP

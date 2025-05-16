@@ -13,7 +13,7 @@ extern "C" {
 namespace ArcVP {
 void pushFinishEvent() {
   SDL_Event event;
-  event.type = ARCVP_FINISH_EVENT;
+  event.type = ARCVP_EVENT_FINISH;
   SDL_PushEvent(&event);
 }
 
@@ -34,8 +34,8 @@ void Player::packetDecodeThreadWorker() {
     }
     int ret;
     {
-      std::scoped_lock lk{media_context_.format_mtx_};
-      ret = av_read_frame(media_context_.format_context_, pkt);
+      std::scoped_lock lk{media_.format_mtx_};
+      ret = av_read_frame(media_.format_context_, pkt);
     }
     if (ret < 0) {
       av_packet_free(&pkt);
@@ -47,13 +47,13 @@ void Player::packetDecodeThreadWorker() {
       spdlog::error("Error reading frame: {}", av_err2str(ret));
       std::exit(1);
     }
-    if (pkt->stream_index == media_context_.video_stream_index_) {
-      bool ok = video_packet_channel_.send(pkt);
+    if (pkt->stream_index == media_.video_stream_index_) {
+      bool ok = video_decode_worker_.packet_chan.send(pkt);
       if (!ok) {
         packet_decode_worker_.status = WorkerStatus::Exiting;
       }
-    } else if (pkt->stream_index == media_context_.audio_stream_index_) {
-      bool ok = audio_packet_channel_.send(pkt);
+    } else if (pkt->stream_index == media_.audio_stream_index_) {
+      bool ok = audio_decode_worker_.packet_chan.send(pkt);
       if (!ok) {
         packet_decode_worker_.status = WorkerStatus::Exiting;
       }

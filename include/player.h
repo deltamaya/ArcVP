@@ -37,27 +37,21 @@ int64_t ptsToTime(int64_t pts, AVRational timebase);
 
 int64_t timeToPts(int64_t milli, AVRational timebase);
 enum ArcVPEvent {
-  ARCVP_NEXTFRAME_EVENT = SDL_EVENT_USER + 1,
-  ARCVP_FINISH_EVENT,
+  ARCVP_EVENT_NEXTFRAME = SDL_EVENT_USER + 1,
+  ARCVP_EVENT_FINISH,
 };
 
 class Player {
-  SyncState sync_state_;
-  MediaContext media_context_;
+  SyncState sync_state_{};
+  MediaContext media_{};
 
   DecodeWorker audio_decode_worker_, video_decode_worker_,
       packet_decode_worker_;
 
-  struct DisposeAVPacket {
-    void operator()(AVPacket* pkt) const { av_packet_free(&pkt); }
-  };
-  Channel<AVPacket*, 256, DisposeAVPacket> video_packet_channel_,
-      audio_packet_channel_;
-  FrameQueue audio_frame_queue_{100}, video_frame_queue_{200};
-
   AudioDevice audio_device_{};
 
   std::vector<uint8_t> audio_buffer_{};
+  SDL_AudioStream* audio_stream=nullptr;
 
   int width = -1, height = -1;
 
@@ -69,8 +63,8 @@ class Player {
 
   void audioDecodeThreadWorker();
 
-  bool setupAudioDevice(int);
-  Player() = default;
+  bool setupAudioDevice();
+  Player() {};
   inline static Player* instance_ptr = nullptr;
 
  public:
@@ -80,47 +74,9 @@ class Player {
     }
     return instance_ptr;
   }
-  std::pair<AVFrame*,int64_t> tryFetchAudioFrame() {
-    std::scoped_lock lk{audio_frame_queue_.mtx, sync_state_.mtx_};
-    int64_t played_ms = getPlayedMs();
-    if (audio_frame_queue_.queue.empty()) {
-      return {nullptr,0};
-    }
-    do {
-      auto front = audio_frame_queue_.queue.front();
-      audio_frame_queue_.semReady.acquire();
-      audio_frame_queue_.queue.pop_front();
-      audio_frame_queue_.semEmpty.release();
-      if (front.present_ms >= played_ms) {
-        return {front.frame,front.present_ms};
-      }
-    } while (!audio_frame_queue_.queue.empty());
 
-    return {nullptr,0};
-  }
-
-  AVFrame* tryFetchVideoFrame() {
-    std::scoped_lock lk{video_frame_queue_.mtx, sync_state_.mtx_};
-    if (sync_state_.status_ != InstanceStatus::Playing) {
-      return nullptr;
-    }
-    int64_t played_ms = getPlayedMs();
-    if (video_frame_queue_.queue.empty()) {
-      return nullptr;
-    }
-    auto front = video_frame_queue_.queue.front();
-    if (front.present_ms <= played_ms) {
-      video_frame_queue_.semReady.acquire();
-      video_frame_queue_.queue.pop_front();
-      video_frame_queue_.semEmpty.release();
-      return front.frame;
-    }
-    return nullptr;
-  }
 
   bool resampleAudioFrame(AVFrame* frame);
-
-  friend void audioCallback(void* userdata, Uint8* stream, int len);
 
   ~Player() {
     sync_state_.status_ = InstanceStatus::Exiting;
@@ -141,11 +97,6 @@ class Player {
       video_decode_worker_.cv.notify_all();
     }
 
-    video_frame_queue_.clear();
-    audio_frame_queue_.clear();
-
-    video_packet_channel_.close();
-    audio_packet_channel_.close();
 
     packet_decode_worker_.join();
     audio_decode_worker_.join();
@@ -163,6 +114,7 @@ class Player {
   }
 
   void startPlayback();
+  friend void audioCallback(void* userdata, SDL_AudioStream* stream, int ,int);
 
   void togglePause() {
     std::scoped_lock lk{sync_state_.mtx_};
@@ -193,7 +145,7 @@ class Player {
 
   int64_t getPlayedMs() {
     return sync_state_.sample_count_ * 1000. /
-           media_context_.audio_codec_params_->sample_rate;
+           media_.audio_codec_params_->sample_rate;
   }
 };
 

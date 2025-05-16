@@ -1,3 +1,4 @@
+
 #include <SDL3_ttf/SDL_ttf.h>
 #include <iostream>
 
@@ -18,7 +19,8 @@ VideoState state = {.window_width = 1280, .window_height = 720};
 // 计算保持宽高比的显示区域
 void calculateDisplayRect() {
   float aspect_ratio = (float)state.src_width / state.src_height;
-  float window_aspect_ratio = (float)state.window_width / state.window_height;
+  float window_aspect_ratio = (float)state.window_width /
+  state.window_height;
 
   if (aspect_ratio > window_aspect_ratio) {
     // 视频比窗口更宽，以窗口宽度为基准
@@ -92,11 +94,32 @@ void handleKeyDown(SDL_Window* window, ArcVP::Player* arc,
 }
 
 ArcVP::Player* arc = ArcVP::Player::instance();
+bool running = true;
+
+void handle_event(SDL_Event const& event) {
+  switch (event.type) {
+    case SDL_EVENT_QUIT:
+      running = false;
+      break;
+    case SDL_EVENT_WINDOW_RESIZED:
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+      handleResize();
+      break;
+    case SDL_EVENT_KEY_DOWN:
+      handleKeyDown(window, arc, event);
+      break;
+    case ArcVP::ARCVP_EVENT_NEXTFRAME:
+      event.
+      break;
+    default:
+      break;
+  }
+}
 
 int main() {
   spdlog::set_level(spdlog::level::debug);
 
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS) != 0) {
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS)) {
     spdlog::error("SDL_Init: {}", SDL_GetError());
     return 1;
   }
@@ -113,14 +136,15 @@ int main() {
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
   constexpr int fontSize = 50;
 
-  TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/CascadiaCode.ttf", fontSize);
-  if (!font) {
+  TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/CascadiaCode.ttf",
+  fontSize); if (!font) {
     spdlog::error("Failed to load font: {}\n", SDL_GetError());
     return 1;
   }
   std::string text = "Hello, SDL!";
   SDL_Color textColor = {255, 255, 255, 0};
-  SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(),0,textColor);
+  SDL_Surface* surface = TTF_RenderText_Blended(font,
+  text.c_str(),0,textColor);
 
   arc->open("test.mp4");
 
@@ -131,10 +155,9 @@ int main() {
 
   SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, surface);
   videoTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12,
-                                   SDL_TEXTUREACCESS_STREAMING, state.src_width,
-                                   state.src_height);
+                                   SDL_TEXTUREACCESS_STREAMING,
+                                   state.src_width, state.src_height);
 
-  bool running = true;
 
   SDL_Rect dstRect;
   dstRect.x = 50;
@@ -143,44 +166,13 @@ int main() {
   dstRect.h = surface->h;
 
   handleResize();
-
   arc->startPlayback();
+
 
   SDL_Event event;
   while (running) {
-    {
-      AVFrame* frame = arc->tryFetchVideoFrame();
-      if (frame) {
-        presentFrame(frame);
-        av_frame_free(&frame);
-      }
-    }
     while (SDL_PollEvent(&event)) {
-      switch (event.type) {
-        case SDL_EVENT_QUIT:
-          running = false;
-          break;
-        case SDL_EVENT_WINDOW_RESIZED:
-        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-          handleResize();
-          presentFrame(frame);
-          break;
-        case SDL_EVENT_KEY_DOWN:
-          handleKeyDown(window, arc, event);
-          break;
-        // case ARCVP_NEXTFRAME_EVENT:
-        // 	// if (event.type == ARCVP_NEXTFRAME_EVENT) {
-        // 	// 	av_frame_free(&frame);
-        // 	// 	frame = static_cast<AVFrame *>( event.user.data1 );
-        // 	// 	// spdlog::debug("frame pointer: {}",(void*)frame);
-        // 	// }
-        // 	break;
-        // case ARCVP_FINISH_EVENT:
-        // 	spdlog::debug("play finish");
-        // 	break;
-        default:
-          break;
-      }
+      handle_event(event);
     }
     SDL_Delay(10);
   }

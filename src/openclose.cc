@@ -15,9 +15,9 @@ std::tuple<int, int> findAVStream(AVFormatContext *formatContext) {
 }
 
 bool Player::open(const char *filename) {
-  std::scoped_lock lk{media_context_.format_mtx_,
-                      media_context_.video_codec_mtx_,
-                      media_context_.audio_codec_mtx_};
+  std::scoped_lock lk{media_.format_mtx_,
+                      media_.video_codec_mtx_,
+                      media_.audio_codec_mtx_};
   // open file and find stream info
   AVFormatContext *formatContext = nullptr;
   int ret = avformat_open_input(&formatContext, filename, nullptr, nullptr);
@@ -114,19 +114,19 @@ bool Player::open(const char *filename) {
     }
   }
 
-  this->media_context_.format_context_ = formatContext;
+  this->media_.format_context_ = formatContext;
 
-  this->media_context_.video_stream_ = videoStream;
-  this->media_context_.video_stream_index_ = videoStreamIndex;
-  this->media_context_.video_codec_ = videoCodec;
-  this->media_context_.video_codec_params_ = videoCodecParams;
-  this->media_context_.video_codec_context_ = videoCodecContext;
+  this->media_.video_stream_ = videoStream;
+  this->media_.video_stream_index_ = videoStreamIndex;
+  this->media_.video_codec_ = videoCodec;
+  this->media_.video_codec_params_ = videoCodecParams;
+  this->media_.video_codec_context_ = videoCodecContext;
 
-  this->media_context_.audio_stream_ = audioStream;
-  this->media_context_.audio_stream_index_ = audioStreamIndex;
-  this->media_context_.audio_codec_ = audioCodec;
-  this->media_context_.audio_codec_params_ = audioCodecParams;
-  this->media_context_.audio_codec_context_ = audioCodecContext;
+  this->media_.audio_stream_ = audioStream;
+  this->media_.audio_stream_index_ = audioStreamIndex;
+  this->media_.audio_codec_ = audioCodec;
+  this->media_.audio_codec_params_ = audioCodecParams;
+  this->media_.audio_codec_context_ = audioCodecContext;
 
   spdlog::info("Opened file '{}'", filename);
   return true;
@@ -142,38 +142,38 @@ void Player::close() {
   audio_decode_worker_.status = WorkerStatus::Idle;
   video_decode_worker_.status = WorkerStatus::Idle;
 
-  video_frame_queue_.clear();
-  audio_frame_queue_.clear();
-  // waits for the worker to put packet into the channel
-  video_packet_channel_.clear();
-  audio_packet_channel_.clear();
+  // video_frame_queue_.clear();
+  // audio_frame_queue_.clear();
+  // // waits for the worker to put packet into the channel
+  // video_packet_channel_.clear();
+  // audio_packet_channel_.clear();
 
   {
-    std::scoped_lock media_lock{media_context_.format_mtx_,
-                                media_context_.video_codec_mtx_,
-                                media_context_.audio_codec_mtx_};
-    if (media_context_.format_context_) {
-      avformat_free_context(media_context_.format_context_);
+    std::scoped_lock media_lock{media_.format_mtx_,
+                                media_.video_codec_mtx_,
+                                media_.audio_codec_mtx_};
+    if (media_.format_context_) {
+      avformat_free_context(media_.format_context_);
     }
-    this->media_context_.format_context_ = nullptr;
+    this->media_.format_context_ = nullptr;
 
-    this->media_context_.video_stream_ = nullptr;
-    this->media_context_.video_stream_index_ = -1;
-    this->media_context_.video_codec_ = nullptr;
-    this->media_context_.video_codec_params_ = nullptr;
-    if (media_context_.video_codec_context_) {
-      avcodec_free_context(&media_context_.video_codec_context_);
+    this->media_.video_stream_ = nullptr;
+    this->media_.video_stream_index_ = -1;
+    this->media_.video_codec_ = nullptr;
+    this->media_.video_codec_params_ = nullptr;
+    if (media_.video_codec_context_) {
+      avcodec_free_context(&media_.video_codec_context_);
     }
-    this->media_context_.video_codec_context_ = nullptr;
+    this->media_.video_codec_context_ = nullptr;
 
-    this->media_context_.audio_stream_ = nullptr;
-    this->media_context_.audio_stream_index_ = -1;
-    this->media_context_.audio_codec_ = nullptr;
-    this->media_context_.audio_codec_params_ = nullptr;
-    if (media_context_.audio_codec_context_) {
-      avcodec_free_context(&media_context_.audio_codec_context_);
+    this->media_.audio_stream_ = nullptr;
+    this->media_.audio_stream_index_ = -1;
+    this->media_.audio_codec_ = nullptr;
+    this->media_.audio_codec_params_ = nullptr;
+    if (media_.audio_codec_context_) {
+      avcodec_free_context(&media_.audio_codec_context_);
     }
-    this->media_context_.audio_codec_context_ = nullptr;
+    this->media_.audio_codec_context_ = nullptr;
   }
 
   spdlog::info("Closed Input");

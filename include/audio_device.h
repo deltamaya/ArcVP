@@ -12,5 +12,12 @@ struct AudioDevice {
   SDL_AudioDeviceID id = -1;
   const char* name = nullptr;
   SDL_AudioSpec spec{};
+
+
+  ~AudioDevice() {
+    if (id!=-1) {
+      SDL_CloseAudioDevice(id);
+    }
+  }
 };
 }  // namespace ArcVP

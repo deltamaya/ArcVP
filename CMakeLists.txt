@@ -10,6 +10,7 @@ find_package(OpenGL REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(SDL3 CONFIG REQUIRED)
 find_package(SDL3_ttf CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 set(FFMPEG_LIBRARIES avcodec avformat avutil swscale swresample)
 set(FFMPEG_INCLUDE_DIRS "D:/FFmpeg/include")
@@ -22,7 +23,6 @@ add_compile_definitions(-DSDL_MAIN_HANDLED)
 link_directories(${FFMPEG_LIBRARY_DIRS})
 # Define Executable
 add_executable(ArcVP main.cc
-        include/Player.h
         src/openclose.cc
         src/packet_decode.cc
         src/seek.cc
@@ -35,4 +35,10 @@ add_executable(ArcVP main.cc
         include/decode_worker.h
         src/control.cc)
 # Link Libraries
-target_link_libraries(ArcVP OpenGL::GL ${FFMPEG_LIBRARIES} spdlog::spdlog SDL3::SDL3 SDL3_ttf::SDL3_ttf)
+target_link_libraries(ArcVP OpenGL::GL ${FFMPEG_LIBRARIES} spdlog::spdlog SDL3::SDL3 SDL3_ttf::SDL3_ttf nlohmann_json::nlohmann_json)
+
+add_custom_command(TARGET ArcVP POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/bin/SDL3.dll
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug/SDL3.dll
+)

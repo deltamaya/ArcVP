@@ -4,13 +4,16 @@
 #include "player.h"
 namespace ArcVP {
 void Player::startPlayback() {
-  SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&audio_device_.spec,nullptr);
-  audio_device_.name=SDL_GetAudioDeviceName(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK);
-  spdlog::info("default audio device: {}", audio_device_.name);
-  if (!setupAudioDevice(media_context_.audio_codec_context_->sample_rate)) {
-    spdlog::info("Unable to setup audio device: {}", audio_device_.name);
-    return;
+  if (audio_device_.id==-1) {
+    setupAudioDevice();
   }
+  spdlog::info("default audio device: {}", audio_device_.name);
+  audio_stream=SDL_CreateAudioStream(&audio_device_.spec,&audio_device_.spec);
+  if (!audio_stream) {
+    spdlog::error("fail to get audio stream: {}",SDL_GetError());
+    std::exit(1);
+  }
+  SDL_BindAudioStream(audio_device_.id,audio_stream);
 
   packet_decode_worker_.spawn([this] { this->packetDecodeThreadWorker(); });
   audio_decode_worker_.spawn([this] { this->audioDecodeThreadWorker(); });
@@ -18,7 +21,7 @@ void Player::startPlayback() {
 
   sync_state_.status_ = InstanceStatus::Playing;
 
-  SDL_PauseAudioDevice(audio_device_.id);
+  SDL_ResumeAudioDevice(audio_device_.id);
 }
 
 void Player::pause() {
