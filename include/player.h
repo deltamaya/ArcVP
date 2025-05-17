@@ -76,6 +76,9 @@ class Player {
  public:
 
   AVFrame* getVideoFrame() {
+    if (video_decode_worker_.output_queue.queue.empty()) {
+      return nullptr;
+    }
     auto front=video_decode_worker_.output_queue.queue.front();
     int64_t played_ms=getPlayedMs();
     if (played_ms>=front.present_ms) {

@@ -15,6 +15,7 @@ void Player::startPlayback() {
   }
   SDL_BindAudioStream(audio_device_.id,audio_stream);
 
+
   audio_decode_worker_.spawn([this] { this->audioDecodeThreadWorker(); });
   video_decode_worker_.spawn([this] { this->videoDecodeThreadWorker(); });
 

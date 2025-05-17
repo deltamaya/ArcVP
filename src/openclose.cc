@@ -21,10 +21,7 @@ void Player::demuxAllPackets() {
       std::exit(1);
     }
     int ret;
-    {
-      std::scoped_lock lk{media_.format_mtx_};
       ret = av_read_frame(media_.format_context_, pkt);
-    }
     if (ret < 0) {
       av_packet_free(&pkt);
       if (ret == AVERROR_EOF) {
@@ -35,9 +32,9 @@ void Player::demuxAllPackets() {
       std::exit(1);
     }
     if (pkt->stream_index == media_.video_stream_index_) {
-      video_decode_worker_.packet_chan.emplace_back(pkt);
+      video_decode_worker_.packet_chan.push_back(pkt);
     } else if (pkt->stream_index == media_.audio_stream_index_) {
-      audio_decode_worker_.packet_chan.emplace_back(pkt);
+      audio_decode_worker_.packet_chan.push_back(pkt);
     } else {
       spdlog::warn("Unknown packet index: {}", pkt->stream_index);
       av_packet_free(&pkt);

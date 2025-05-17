@@ -15,7 +15,6 @@ void Player::audioDecodeThreadWorker() {
     AVFrame* frame = av_frame_alloc();
     int ret = 0;
     while (true) {
-      std::scoped_lock audioLock{media_.audio_codec_mtx_};
       ret = avcodec_receive_frame(media_.audio_codec_context_, frame);
       if (ret == 0) {
         break;
@@ -45,19 +44,18 @@ void Player::audioDecodeThreadWorker() {
     // spdlog::debug("audio try lock audio queue");
     int64_t present_ms =
         ptsToTime(frame->pts, media_.audio_stream_->time_base);
+    // SDL 会从 stream 中取数据
+    resampleAudioFrame(frame);
 
-    // {
-    //   std::scoped_lock lk{audio_frame_queue_.mtx, sync_state_.mtx_};
-    //   int64_t played_ms = getPlayedMs();
-    //   // spdlog::debug("lock done");
-    //   if (present_ms < played_ms ||
-    //       !audio_frame_queue_.queue.empty() &&
-    //           audio_frame_queue_.queue.back().present_ms >= present_ms) {
-    //     spdlog::info("Video: Dropped frame at {}s", present_ms / 1000.);
-    //     av_frame_free(&frame);
-    //     continue;
-    //   }
-    // }
+    while (SDL_GetAudioStreamAvailable(audio_stream)>114514) {
+      std::this_thread::sleep_for(10ms);
+    }
+
+      SDL_PutAudioStreamData(audio_stream,audio_buffer_.data(),audio_buffer_.size());
+      SDL_FlushAudioStream(audio_stream);
+    sync_state_.sample_count_ +=
+        audio_buffer_.size() / sizeof(float) /
+        media_.audio_codec_params_->ch_layout.nb_channels;
   }
 end:
   spdlog::info("Audio decode thread exited");
