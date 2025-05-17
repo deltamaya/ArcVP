@@ -71,6 +71,7 @@ class Player {
   bool setupAudioDevice();
   Player() {};
   inline static Player* instance_ptr = nullptr;
+  void demuxAllPackets();
 
 
  public:
@@ -104,11 +105,23 @@ class Player {
   bool resampleAudioFrame(AVFrame* frame);
 
   ~Player() {
+    sync_state_.should_exit=true;
+    video_decode_worker_.output_queue.mtx.lock();
+    while (!video_decode_worker_.output_queue.queue.empty()) {
+      auto frame=video_decode_worker_.output_queue.queue.front().frame;
+      av_frame_free(&frame);
+      video_decode_worker_.output_queue.queue.pop_front();
+      video_decode_worker_.output_queue.semEmpty.release();
+    }
+    video_decode_worker_.output_queue.mtx.unlock();
 
+
+
+    video_decode_worker_.join();
+    audio_decode_worker_.join();
   }
 
 
-  void demuxAllPackets();
   bool open(const char*);
 
   void close();
