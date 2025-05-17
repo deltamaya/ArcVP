@@ -21,6 +21,10 @@ void Player::audioDecodeThreadWorker() {
       }
       if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
         // spdlog::debug("audio thread receive packet with lock");
+        if (audio_decode_worker_.packet_chan.empty()) {
+          av_frame_free(&frame);
+          goto end;
+        }
         auto pkt = audio_decode_worker_.packet_chan.front();
         audio_decode_worker_.packet_chan.pop_front();
         // spdlog::debug("packet acquired");

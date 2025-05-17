@@ -94,12 +94,11 @@ void handleKeyDown(SDL_Window* window, ArcVP::Player* arc,
 }
 
 ArcVP::Player* arc = ArcVP::Player::instance();
-bool running = true;
 
 void handle_event(SDL_Event const& event) {
   switch (event.type) {
     case SDL_EVENT_QUIT:
-      running = false;
+      arc->sync_state_.should_exit=true;
       break;
     case SDL_EVENT_WINDOW_RESIZED:
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
@@ -167,7 +166,7 @@ int main() {
 
 
   SDL_Event event;
-  while (running) {
+  while (!arc->sync_state_.should_exit) {
     while (SDL_PollEvent(&event)) {
       handle_event(event);
     }

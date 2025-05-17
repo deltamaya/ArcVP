@@ -20,6 +20,13 @@ void Player::videoDecodeThreadWorker() {
         break;
       }
       if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        if (video_decode_worker_.packet_chan.empty()) {
+          video_decode_worker_.output_queue.mtx.lock();
+          video_decode_worker_.output_queue.queue.emplace_back(nullptr,AV_NOPTS_VALUE);
+          video_decode_worker_.output_queue.mtx.unlock();
+          av_frame_free(&frame);
+          goto end;
+        }
         auto pkt = video_decode_worker_.packet_chan.front();
         video_decode_worker_.packet_chan.pop_front();
         if (!pkt) {

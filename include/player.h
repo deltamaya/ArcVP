@@ -47,7 +47,6 @@ struct NextFrameEvent {
 };
 
 class Player {
-  SyncState sync_state_{};
   MediaContext media_{};
 
 
@@ -81,6 +80,10 @@ class Player {
       return nullptr;
     }
     auto front=video_decode_worker_.output_queue.queue.front();
+    if (front.present_ms==AV_NOPTS_VALUE) {
+      sync_state_.should_exit=true;
+      return nullptr;
+    }
     int64_t played_ms=getPlayedMs();
     if (played_ms>=front.present_ms) {
       // display this frame
@@ -156,6 +159,7 @@ class Player {
   std::int64_t getAudioPlayTime(std::int64_t bytesPlayed);
 
   std::tuple<int, int> getWH() { return std::make_tuple(width, height); }
+  SyncState sync_state_{};
 
   int64_t getPlayedMs() {
     return sync_state_.sample_count_ * 1000. /
