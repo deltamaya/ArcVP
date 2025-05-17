@@ -108,9 +108,6 @@ void handle_event(SDL_Event const& event) {
     case SDL_EVENT_KEY_DOWN:
       handleKeyDown(window, arc, event);
       break;
-    case ArcVP::ARCVP_EVENT_NEXTFRAME:
-      event.
-      break;
     default:
       break;
   }
@@ -173,6 +170,11 @@ int main() {
   while (running) {
     while (SDL_PollEvent(&event)) {
       handle_event(event);
+    }
+    auto frame=arc->getVideoFrame();
+    if (frame) {
+      presentFrame(frame);
+      av_frame_free(&frame);
     }
     SDL_Delay(10);
   }

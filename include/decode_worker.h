@@ -20,10 +20,8 @@ struct DecodeWorker {
   std::mutex mtx{};
   std::condition_variable cv;
   FrameQueue output_queue;
-  struct DisposeAVPacket {
-    void operator()(AVPacket* pkt) const { av_packet_free(&pkt); }
-  };
-  Channel<AVPacket*,200,DisposeAVPacket> packet_chan{};
+
+  std::deque<AVPacket*> packet_chan{};
   WorkerStatus status = WorkerStatus::Idle;
 
   explicit DecodeWorker() :output_queue(100){}

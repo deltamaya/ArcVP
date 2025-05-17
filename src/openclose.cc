@@ -13,10 +13,39 @@ std::tuple<int, int> findAVStream(AVFormatContext *formatContext) {
                                          -1, nullptr, 0);
   return std::make_tuple(videoStreamIndex, audioStreamIndex);
 }
-
+void Player::demuxAllPackets() {
+  while (true) {
+    AVPacket *pkt = av_packet_alloc();
+    if (!pkt) {
+      spdlog::error("Fail to allocate AVPacket");
+      std::exit(1);
+    }
+    int ret;
+    {
+      std::scoped_lock lk{media_.format_mtx_};
+      ret = av_read_frame(media_.format_context_, pkt);
+    }
+    if (ret < 0) {
+      av_packet_free(&pkt);
+      if (ret == AVERROR_EOF) {
+        spdlog::info("Packet decode worker quited due to EOF");
+        break;
+      }
+      spdlog::error("Error reading frame: {}", av_err2str(ret));
+      std::exit(1);
+    }
+    if (pkt->stream_index == media_.video_stream_index_) {
+      video_decode_worker_.packet_chan.emplace_back(pkt);
+    } else if (pkt->stream_index == media_.audio_stream_index_) {
+      audio_decode_worker_.packet_chan.emplace_back(pkt);
+    } else {
+      spdlog::warn("Unknown packet index: {}", pkt->stream_index);
+      av_packet_free(&pkt);
+    }
+  }
+}
 bool Player::open(const char *filename) {
-  std::scoped_lock lk{media_.format_mtx_,
-                      media_.video_codec_mtx_,
+  std::scoped_lock lk{media_.format_mtx_, media_.video_codec_mtx_,
                       media_.audio_codec_mtx_};
   // open file and find stream info
   AVFormatContext *formatContext = nullptr;
@@ -129,16 +158,15 @@ bool Player::open(const char *filename) {
   this->media_.audio_codec_context_ = audioCodecContext;
 
   spdlog::info("Opened file '{}'", filename);
+  demuxAllPackets();
   return true;
 }
 
 void Player::close() {
   std::scoped_lock lk{sync_state_.mtx_};
   pause();
-  sync_state_.status_ = InstanceStatus::Idle;
   sync_state_.sample_count_ = 0;
 
-  packet_decode_worker_.status = WorkerStatus::Idle;
   audio_decode_worker_.status = WorkerStatus::Idle;
   video_decode_worker_.status = WorkerStatus::Idle;
 
@@ -149,8 +177,7 @@ void Player::close() {
   // audio_packet_channel_.clear();
 
   {
-    std::scoped_lock media_lock{media_.format_mtx_,
-                                media_.video_codec_mtx_,
+    std::scoped_lock media_lock{media_.format_mtx_, media_.video_codec_mtx_,
                                 media_.audio_codec_mtx_};
     if (media_.format_context_) {
       avformat_free_context(media_.format_context_);

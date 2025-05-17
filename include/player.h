@@ -41,12 +41,17 @@ enum ArcVPEvent {
   ARCVP_EVENT_FINISH,
 };
 
+struct NextFrameEvent {
+  AVFrame* frame;
+  int64_t present_ms;
+};
+
 class Player {
   SyncState sync_state_{};
   MediaContext media_{};
 
-  DecodeWorker audio_decode_worker_, video_decode_worker_,
-      packet_decode_worker_;
+
+  DecodeWorker audio_decode_worker_, video_decode_worker_;
 
   AudioDevice audio_device_{};
 
@@ -67,7 +72,24 @@ class Player {
   Player() {};
   inline static Player* instance_ptr = nullptr;
 
+
  public:
+
+  AVFrame* getVideoFrame() {
+    auto front=video_decode_worker_.output_queue.queue.front();
+    int64_t played_ms=getPlayedMs();
+    if (played_ms>=front.present_ms) {
+      // display this frame
+      video_decode_worker_.output_queue.semReady.acquire();
+      video_decode_worker_.output_queue.mtx.lock();
+      video_decode_worker_.output_queue.queue.pop_front();
+      video_decode_worker_.output_queue.mtx.unlock();
+      video_decode_worker_.output_queue.semEmpty.release();
+      return front.frame;
+    }
+    return nullptr;
+  }
+
   static Player* instance() {
     if (!instance_ptr) {
       instance_ptr = new Player();
@@ -79,30 +101,11 @@ class Player {
   bool resampleAudioFrame(AVFrame* frame);
 
   ~Player() {
-    sync_state_.status_ = InstanceStatus::Exiting;
 
-    {
-      std::scoped_lock status_lock{packet_decode_worker_.mtx};
-      packet_decode_worker_.status = WorkerStatus::Exiting;
-      packet_decode_worker_.cv.notify_all();
-    }
-    {
-      std::scoped_lock status_lock{audio_decode_worker_.mtx};
-      audio_decode_worker_.status = WorkerStatus::Exiting;
-      audio_decode_worker_.cv.notify_all();
-    }
-    {
-      std::scoped_lock status_lock{video_decode_worker_.mtx};
-      video_decode_worker_.status = WorkerStatus::Exiting;
-      video_decode_worker_.cv.notify_all();
-    }
-
-
-    packet_decode_worker_.join();
-    audio_decode_worker_.join();
-    video_decode_worker_.join();
   }
 
+
+  void demuxAllPackets();
   bool open(const char*);
 
   void close();
@@ -117,15 +120,10 @@ class Player {
   friend void audioCallback(void* userdata, SDL_AudioStream* stream, int ,int);
 
   void togglePause() {
-    std::scoped_lock lk{sync_state_.mtx_};
-    if (sync_state_.status_==InstanceStatus::Pause) {
+    if (sync_state_.pause) {
       unpause();
-    }
-    else if (sync_state_.status_==InstanceStatus::Playing){
-      pause();
     }else {
-      spdlog::warn("Toggle pause state in invalid status");
-      std::exit(1);
+      pause();
     }
   }
   void pause();

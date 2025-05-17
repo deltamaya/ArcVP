@@ -11,12 +11,12 @@
 namespace ArcVP {
 using namespace std::chrono;
 using namespace std::chrono_literals;
-enum class InstanceStatus { Idle, Playing, Seeking, Pause, Exiting };
 struct SyncState {
   steady_clock::time_point audio_start_{};
-  int64_t sample_count_;
-  InstanceStatus status_=InstanceStatus::Idle;
-  std::mutex mtx_;
+  int64_t sample_count_=0;
+  std::atomic_bool should_exit=false;
+  std::atomic_bool pause=true;
+  std::mutex mtx_{};
 };
 }  // namespace ArcVP
 

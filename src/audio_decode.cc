@@ -22,7 +22,8 @@ void Player::audioDecodeThreadWorker() {
       }
       if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
         // spdlog::debug("audio thread receive packet with lock");
-        auto pkt = audio_decode_worker_.packet_chan.receive();
+        auto pkt = audio_decode_worker_.packet_chan.front();
+        audio_decode_worker_.packet_chan.pop_front();
         // spdlog::debug("packet acquired");
         if (!pkt) {
           spdlog::info("Audio Consumer exited due to closed channel");
@@ -30,11 +31,11 @@ void Player::audioDecodeThreadWorker() {
           goto end;
         }
         ret = avcodec_send_packet(media_.audio_codec_context_,
-                                  pkt.value());
+                                  pkt);
         if (ret < 0) {
           spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
         }
-        av_packet_free(&pkt.value());
+        av_packet_free(&pkt);
       } else {
         spdlog::error("Unable to receive audio frame: {}", av_err2str(ret));
         av_frame_free(&frame);
