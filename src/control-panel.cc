@@ -4,7 +4,7 @@
 
 #include "imgui.h"
 #include "portable-file-dialogs.h"
-#include "video-reader.hh"
+
 
 static int speedIndex = 4;
 static float speeds[] = {0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2};
