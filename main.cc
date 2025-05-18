@@ -1,5 +1,6 @@
 
 #include <SDL3_ttf/SDL_ttf.h>
+
 #include <iostream>
 
 #include "player.h"
@@ -7,10 +8,10 @@
 using namespace std::chrono;
 
 typedef struct VideoState {
-  int src_width;          // 原始视频宽度
-  int src_height;         // 原始视频高度
-  int window_width;       // 窗口宽度
-  int window_height;      // 窗口高度
+  int src_width;           // 原始视频宽度
+  int src_height;          // 原始视频高度
+  int window_width;        // 窗口宽度
+  int window_height;       // 窗口高度
   SDL_FRect display_rect;  // 显示区域
 } VideoState;
 
@@ -19,8 +20,7 @@ VideoState state = {.window_width = 1280, .window_height = 720};
 // 计算保持宽高比的显示区域
 void calculateDisplayRect() {
   float aspect_ratio = (float)state.src_width / state.src_height;
-  float window_aspect_ratio = (float)state.window_width /
-  state.window_height;
+  float window_aspect_ratio = (float)state.window_width / state.window_height;
 
   if (aspect_ratio > window_aspect_ratio) {
     // 视频比窗口更宽，以窗口宽度为基准
@@ -49,15 +49,15 @@ void handleResize() {
   SDL_GetWindowSize(window, &state.window_width, &state.window_height);
   calculateDisplayRect();
 }
+ArcVP::Player* arc = ArcVP::Player::instance();
 
 void presentFrame(AVFrame* frame) {
-  SDL_UpdateYUVTexture(videoTexture, nullptr, frame->data[0],
-                       frame->linesize[0],                   // Y plane
-                       frame->data[1], frame->linesize[1],   // U plane
-                       frame->data[2], frame->linesize[2]);  // V plane
-  SDL_RenderClear(renderer);
-  SDL_RenderTexture(renderer, videoTexture, nullptr,&state.display_rect);
-  SDL_RenderPresent(renderer);
+  auto [width, height] = arc->getWH();
+
+
+  // SDL_RenderClear(renderer);
+  // SDL_RenderTexture(renderer, videoTexture, nullptr, &state.display_rect);
+  // SDL_RenderPresent(renderer);
 }
 
 void handleKeyDown(SDL_Window* window, ArcVP::Player* arc,
@@ -93,12 +93,10 @@ void handleKeyDown(SDL_Window* window, ArcVP::Player* arc,
   }
 }
 
-ArcVP::Player* arc = ArcVP::Player::instance();
-
 void handle_event(SDL_Event const& event) {
   switch (event.type) {
     case SDL_EVENT_QUIT:
-      arc->sync_state_.should_exit=true;
+      arc->sync_state_.should_exit = true;
       break;
     case SDL_EVENT_WINDOW_RESIZED:
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
@@ -125,22 +123,49 @@ int main() {
     return 1;
   }
 
-  window = SDL_CreateWindow("Arc VP", state.window_width,
-                            state.window_height, SDL_WINDOW_RESIZABLE);
+  window = SDL_CreateWindow(
+      "Arc VP", state.window_width, state.window_height,
+      SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+
+  if (window == nullptr) {
+    printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
+    return -1;
+  }
 
   renderer = SDL_CreateRenderer(window, nullptr);
-  SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+  SDL_SetRenderVSync(renderer, 1);
+  if (renderer == nullptr) {
+    SDL_Log("Error: SDL_CreateRenderer(): %s\n", SDL_GetError());
+    return -1;
+  }
+  SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+  SDL_ShowWindow(window);
+
+  // Setup Dear ImGui context
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGuiIO& io = ImGui::GetIO();
+  io.ConfigFlags |=
+      ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+  io.ConfigFlags |=
+      ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+
+  ImGui::StyleColorsDark();
+  // Setup Platform/Renderer backends
+  ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
+  ImGui_ImplSDLRenderer3_Init(renderer);
+
   constexpr int fontSize = 50;
 
-  TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/CascadiaCode.ttf",
-  fontSize); if (!font) {
+  TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/CascadiaCode.ttf", fontSize);
+  if (!font) {
     spdlog::error("Failed to load font: {}\n", SDL_GetError());
     return 1;
   }
   std::string text = "Hello, SDL!";
   SDL_Color textColor = {255, 255, 255, 0};
-  SDL_Surface* surface = TTF_RenderText_Blended(font,
-  text.c_str(),0,textColor);
+  SDL_Surface* surface =
+      TTF_RenderText_Blended(font, text.c_str(), 0, textColor);
 
   arc->open("test.mp4");
 
@@ -151,9 +176,8 @@ int main() {
 
   SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, surface);
   videoTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12,
-                                   SDL_TEXTUREACCESS_STREAMING,
-                                   state.src_width, state.src_height);
-
+                                   SDL_TEXTUREACCESS_STREAMING, state.src_width,
+                                   state.src_height);
 
   SDL_Rect dstRect;
   dstRect.x = 50;
@@ -164,23 +188,42 @@ int main() {
   handleResize();
   arc->startPlayback();
 
-
   SDL_Event event;
   while (!arc->sync_state_.should_exit) {
     while (SDL_PollEvent(&event)) {
+      ImGui_ImplSDL3_ProcessEvent(&event);
       handle_event(event);
     }
+    // Start the Dear ImGui frame
+    ImGui_ImplSDLRenderer3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("Arc VP");
     if (!arc->sync_state_.pause) {
-      auto frame=arc->getVideoFrame();
+      auto frame = arc->getVideoFrame();
       if (frame) {
-        presentFrame(frame);
+        SDL_UpdateYUVTexture(videoTexture, nullptr, frame->data[0],
+                     frame->linesize[0],                   // Y plane
+                     frame->data[1], frame->linesize[1],   // U plane
+                     frame->data[2], frame->linesize[2]);  // V plane
         av_frame_free(&frame);
       }
     }
+
+    ImGui::Image((ImTextureID)videoTexture, ImVec2(state.window_width,state.window_height));
+    ImGui::End();
+    ImGui::Render();
+    SDL_RenderClear(renderer);
+    ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(),renderer);
+    SDL_RenderPresent(renderer);
     SDL_Delay(10);
   }
 
   arc->exit();
+  ImGui_ImplSDLRenderer3_Shutdown();
+  ImGui_ImplSDL3_Shutdown();
+  ImGui::DestroyContext();
 
   SDL_DestroyTexture(textTexture);
   TTF_CloseFont(font);

@@ -21,7 +21,9 @@
 #include "frame_queue.h"
 #include "media_context.h"
 #include "sync_state.h"
-
+#include "imgui.h"
+#include "backends/imgui_impl_sdl3.h"
+#include "backends/imgui_impl_sdlrenderer3.h"
 extern "C" {
 #include <SDL3/SDL.h>
 #include <libavcodec/avcodec.h>
@@ -76,7 +78,7 @@ class Player {
   AVFrame* decodeAudioFrame();
 
  public:
-
+  void controlPanel();
   AVFrame* getVideoFrame() {
     if (video_decode_worker_.output_queue.queue.empty()) {
       return nullptr;

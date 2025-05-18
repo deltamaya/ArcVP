@@ -17,8 +17,11 @@ set(FFMPEG_INCLUDE_DIRS "D:/FFmpeg/include")
 set(FFMPEG_LIBRARY_DIRS "D:/FFmpeg/lib")
 # Include directory
 message(${FFMPEG_INCLUDE_DIRS} ${FFMPEG_LIBRARY_DIRS})
-include_directories(${FFMPEG_INCLUDE_DIRS} "./include")
+include_directories(${FFMPEG_INCLUDE_DIRS} "./include" "./imgui" )
 add_compile_definitions(-DSDL_MAIN_HANDLED)
+
+file(GLOB IMGUI_SRC "./imgui/*.cpp")
+
 # Link directory
 link_directories(${FFMPEG_LIBRARY_DIRS})
 # Define Executable
@@ -33,7 +36,12 @@ add_executable(ArcVP main.cc
         include/audio_device.h
         include/frame_queue.h
         include/decode_worker.h
-        src/control.cc)
+        src/control.cc
+        imgui/backends/imgui_impl_sdl3.cpp
+        imgui/backends/imgui_impl_sdlrenderer3.cpp
+        ${IMGUI_SRC}
+
+)
 # Link Libraries
 target_link_libraries(ArcVP OpenGL::GL ${FFMPEG_LIBRARIES} spdlog::spdlog SDL3::SDL3 SDL3_ttf::SDL3_ttf nlohmann_json::nlohmann_json)
 

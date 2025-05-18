@@ -2,8 +2,7 @@
 // Created by delta on 7 Oct 2024.
 //
 
-#include "imgui.h"
-#include "portable-file-dialogs.h"
+#include "player.h"
 
 
 static int speedIndex = 4;
@@ -22,13 +21,9 @@ float getNextSpeedUp() {
   }
   return speeds[speedIndex];
 }
+namespace ArcVP {
 
-void VideoReader::resetSpeed() {
-  playbackSpeed = 1.0;
-  speedIndex = 4;
-}
-
-void VideoReader::controlPanel() {
+void Player::controlPanel() {
   int totalSeconds = durationMilli / 1000;
   int totalMinutes = totalSeconds / 60;
   totalSeconds %= 60;
@@ -140,3 +135,4 @@ void VideoReader::controlPanel() {
               curMinutes, curSeconds, totalHour, totalMinutes, totalSeconds);
   ImGui::End();
 }
+}  // namespace ArcVP
