@@ -170,10 +170,12 @@ int main() {
     while (SDL_PollEvent(&event)) {
       handle_event(event);
     }
-    auto frame=arc->getVideoFrame();
-    if (frame) {
-      presentFrame(frame);
-      av_frame_free(&frame);
+    if (!arc->sync_state_.pause) {
+      auto frame=arc->getVideoFrame();
+      if (frame) {
+        presentFrame(frame);
+        av_frame_free(&frame);
+      }
     }
     SDL_Delay(10);
   }

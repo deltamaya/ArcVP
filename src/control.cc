@@ -19,6 +19,7 @@ void Player::startPlayback() {
   audio_decode_worker_.spawn([this] { this->audioDecodeThreadWorker(); });
   video_decode_worker_.spawn([this] { this->videoDecodeThreadWorker(); });
 
+  sync_state_.pause=false;
   SDL_ResumeAudioDevice(audio_device_.id);
 }
 
