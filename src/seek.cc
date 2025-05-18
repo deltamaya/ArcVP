@@ -12,7 +12,7 @@ void Player::seekTo(std::int64_t milli){
   std::scoped_lock lk{video_decode_worker_.mtx,audio_decode_worker_.mtx};
   pause();
 
-  spdlog::debug("seek to {}s",milli/1000.);
+  spdlog::debug("current: {}s,seek to {}s",getPlayedMs()/1000.,milli/1000.);
 
 
   if(media_.video_codec_context_!=nullptr) {
@@ -30,7 +30,7 @@ void Player::seekTo(std::int64_t milli){
     int64_t ts=timeToPts(milli,media_.audio_stream_->time_base);
     spdlog::debug("audio pts: {}",ts);
 
-    int ret=av_seek_frame(media_.format_context_,media_.audio_stream_index_,ts,AVSEEK_FLAG_BACKWARD);
+    int ret=av_seek_frame(media_.format_context_,media_.audio_stream_index_,ts,AVSEEK_FLAG_ANY);
     if(ret<0) {
       spdlog::error("Unable to seek ts: {}, {}",ts,av_err2str(ret));
       return;
@@ -59,6 +59,15 @@ void Player::seekTo(std::int64_t milli){
     audio_decode_worker_.output_queue.semEmpty.release();
   }
 
+  while (!video_decode_worker_.packet_chan.empty()) {
+    av_packet_free(&video_decode_worker_.packet_chan.front());
+    video_decode_worker_.packet_chan.pop_front();
+  }
+
+  while (!audio_decode_worker_.packet_chan.empty()) {
+    av_packet_free(&audio_decode_worker_.packet_chan.front());
+    audio_decode_worker_.packet_chan.pop_front();
+  }
   demuxAllPackets();
   bool ok= SDL_ClearAudioStream(audio_stream);
   if (!ok) {
@@ -78,9 +87,18 @@ void Player::seekTo(std::int64_t milli){
       continue;
     }
 
-    video_decode_worker_.output_queue.semEmpty.acquire();
     video_decode_worker_.output_queue.mtx.lock();
+    if (!video_decode_worker_.output_queue.queue.empty()) {
+      video_decode_worker_.output_queue.semReady.acquire();
+      auto front=video_decode_worker_.output_queue.queue.front();
+      av_frame_free(&front.frame);
+      video_decode_worker_.output_queue.queue.pop_front();
+      video_decode_worker_.output_queue.semEmpty.release();
+    }
+
+    video_decode_worker_.output_queue.semEmpty.acquire();
     video_decode_worker_.output_queue.queue.emplace_back(frame,present_ms);
+    spdlog::debug("put video frame at: {}",present_ms);
     video_decode_worker_.output_queue.mtx.unlock();
     video_decode_worker_.output_queue.semReady.release();
     break;
