@@ -72,6 +72,8 @@ class Player {
   inline static Player* instance_ptr = nullptr;
   void demuxAllPackets();
 
+  AVFrame* decodeVideoFrame();
+  AVFrame* decodeAudioFrame();
 
  public:
 

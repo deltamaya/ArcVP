@@ -3,53 +3,57 @@
 //
 #include "player.h"
 namespace ArcVP {
-void Player::audioDecodeThreadWorker() {
-  while (!sync_state_.should_exit) {
-    std::unique_lock status_lock{audio_decode_worker_.mtx};
-    audio_decode_worker_.cv.wait(status_lock, [this] {
-      return audio_decode_worker_.status != WorkerStatus::Idle;
-    });
-    if (audio_decode_worker_.status == WorkerStatus::Exiting) {
+AVFrame* Player::decodeAudioFrame() {
+  AVFrame* frame = av_frame_alloc();
+  int ret = 0;
+  while (true) {
+    ret = avcodec_receive_frame(media_.audio_codec_context_, frame);
+    if (ret == 0) {
       break;
     }
-    AVFrame* frame = av_frame_alloc();
-    int ret = 0;
-    while (true) {
-      ret = avcodec_receive_frame(media_.audio_codec_context_, frame);
-      if (ret == 0) {
-        break;
-      }
-      if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-        // spdlog::debug("audio thread receive packet with lock");
-        if (audio_decode_worker_.packet_chan.empty()) {
-          av_frame_free(&frame);
-          goto end;
-        }
-        auto pkt = audio_decode_worker_.packet_chan.front();
-        audio_decode_worker_.packet_chan.pop_front();
-        // spdlog::debug("packet acquired");
-        if (!pkt) {
-          spdlog::info("Audio Consumer exited due to closed channel");
-          audio_decode_worker_.status = WorkerStatus::Exiting;
-          goto end;
-        }
-        ret = avcodec_send_packet(media_.audio_codec_context_, pkt);
-        if (ret < 0) {
-          spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
-        }
-        av_packet_free(&pkt);
-      } else {
-        spdlog::error("Unable to receive audio frame: {}", av_err2str(ret));
+    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+      // spdlog::debug("audio thread receive packet with lock");
+      if (audio_decode_worker_.packet_chan.empty()) {
         av_frame_free(&frame);
+        return nullptr;
       }
+      auto pkt = audio_decode_worker_.packet_chan.front();
+      audio_decode_worker_.packet_chan.pop_front();
+      // spdlog::debug("packet acquired");
+      if (!pkt) {
+        spdlog::info("Audio Consumer exited due to closed channel");
+        audio_decode_worker_.status = WorkerStatus::Exiting;
+        av_frame_free(&frame);
+        return nullptr;
+      }
+      ret = avcodec_send_packet(media_.audio_codec_context_, pkt);
+      if (ret < 0) {
+        spdlog::error("Error sending packet to codec: {}", av_err2str(ret));
+      }
+      av_packet_free(&pkt);
+    } else {
+      spdlog::error("Unable to receive audio frame: {}", av_err2str(ret));
+      av_frame_free(&frame);
     }
+  }
+  return frame;
+}
+void Player::audioDecodeThreadWorker() {
+  while (!sync_state_.should_exit) {
+    std::unique_lock lk{audio_decode_worker_.mtx};
+    AVFrame* frame=decodeAudioFrame();
+    if (!frame) {
+      break;
+    }
+    lk.unlock();
 
     // spdlog::debug("audio try lock audio queue");
     int64_t present_ms = ptsToTime(frame->pts, media_.audio_stream_->time_base);
     // SDL 会从 stream 中取数据
     resampleAudioFrame(frame);
 
-    while (!sync_state_.should_exit&&SDL_GetAudioStreamAvailable(audio_stream) > 114514) {
+    while (!sync_state_.should_exit &&
+           SDL_GetAudioStreamAvailable(audio_stream) > 114514) {
       std::this_thread::sleep_for(10ms);
     }
     // spdlog::debug("avail: {}",SDL_GetAudioStreamAvailable(audio_stream));
