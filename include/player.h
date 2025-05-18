@@ -130,7 +130,7 @@ class Player {
   void close();
 
   void exit() {
-    close();
+    // close();
     delete instance_ptr;
     instance_ptr = nullptr;
   }

@@ -180,7 +180,7 @@ int main() {
     SDL_Delay(10);
   }
 
-
+  arc->exit();
 
   SDL_DestroyTexture(textTexture);
   TTF_CloseFont(font);
