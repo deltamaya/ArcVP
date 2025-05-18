@@ -30,7 +30,7 @@ void Player::seekTo(std::int64_t milli){
     int64_t ts=timeToPts(milli,media_.audio_stream_->time_base);
     spdlog::debug("audio pts: {}",ts);
 
-    int ret=av_seek_frame(media_.format_context_,media_.audio_stream_index_,ts,AVSEEK_FLAG_ANY);
+    int ret=av_seek_frame(media_.format_context_,media_.audio_stream_index_,ts,AVSEEK_FLAG_BACKWARD);
     if(ret<0) {
       spdlog::error("Unable to seek ts: {}, {}",ts,av_err2str(ret));
       return;
