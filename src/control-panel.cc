@@ -27,14 +27,11 @@ void Player::setPlaybackSpeed(float speed) {
   spdlog::debug("settings speed to: {}",speed);
   this->speed=speed;
   pause();
-  SDL_UnbindAudioStream(audio_stream);
-  SDL_DestroyAudioStream(audio_stream);
   SDL_AudioSpec new_spec;
   new_spec.channels=media_.audio_codec_params_->ch_layout.nb_channels;
   new_spec.format=SDL_AUDIO_F32;
   new_spec.freq=media_.audio_codec_params_->sample_rate*speed;
-  audio_stream=SDL_CreateAudioStream(&new_spec,&new_spec);
-  SDL_BindAudioStream(audio_device_.id,audio_stream);
+  SDL_SetAudioStreamFrequencyRatio(audio_stream,speed);
   unpause();
 }
 

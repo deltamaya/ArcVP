@@ -83,6 +83,7 @@ class Player {
 
   void controlPanel();
   AVFrame* getVideoFrame() {
+    retry:
     if (video_decode_worker_.output_queue.queue.empty()) {
       return nullptr;
     }
@@ -94,11 +95,22 @@ class Player {
     int64_t played_ms=getPlayedMs();
     if (played_ms>=front.present_ms) {
       // display this frame
+      int dt=played_ms-front.present_ms;
+      bool drop=false;
+      // too late, drop frame;
+      if (dt>100) {
+        spdlog::debug("DROP played: {}, present: {}",played_ms,front.present_ms);
+        drop=true;
+      }
       video_decode_worker_.output_queue.semReady.acquire();
       video_decode_worker_.output_queue.mtx.lock();
       video_decode_worker_.output_queue.queue.pop_front();
       video_decode_worker_.output_queue.mtx.unlock();
       video_decode_worker_.output_queue.semEmpty.release();
+      if (drop) {
+        av_frame_free(&front.frame);
+        goto retry;
+      }
       return front.frame;
     }
     return nullptr;
