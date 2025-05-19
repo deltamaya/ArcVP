@@ -199,6 +199,11 @@ int main() {
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
+    ImVec2 windowPos = ImVec2(0,0);        // X, Y position
+    ImVec2 windowSize = ImVec2(state.window_width,state.window_height);       // Width, Height
+
+    ImGui::SetNextWindowPos(windowPos, ImGuiCond_Once);  // or ImGuiCond_Always
+    ImGui::SetNextWindowSize(windowSize, ImGuiCond_Once);
     ImGui::Begin("Arc VP");
     if (!arc->sync_state_.pause) {
       auto frame = arc->getVideoFrame();
@@ -213,6 +218,8 @@ int main() {
 
     ImGui::Image((ImTextureID)videoTexture, ImVec2(state.window_width,state.window_height));
     ImGui::End();
+
+    arc->controlPanel();
     ImGui::Render();
     SDL_RenderClear(renderer);
     ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(),renderer);
