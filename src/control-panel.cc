@@ -23,6 +23,21 @@ float getNextSpeedUp() {
 }
 namespace ArcVP {
 
+void Player::setPlaybackSpeed(float speed) {
+  spdlog::debug("settings speed to: {}",speed);
+  this->speed=speed;
+  pause();
+  SDL_UnbindAudioStream(audio_stream);
+  SDL_DestroyAudioStream(audio_stream);
+  SDL_AudioSpec new_spec;
+  new_spec.channels=media_.audio_codec_params_->ch_layout.nb_channels;
+  new_spec.format=SDL_AUDIO_F32;
+  new_spec.freq=media_.audio_codec_params_->sample_rate*speed;
+  audio_stream=SDL_CreateAudioStream(&new_spec,&new_spec);
+  SDL_BindAudioStream(audio_device_.id,audio_stream);
+  unpause();
+}
+
 void Player::controlPanel() {
   int totalSeconds=ptsToTime(media_.video_stream_->duration,media_.video_stream_->time_base)/1000.;
   int totalMinutes = totalSeconds / 60;
@@ -35,7 +50,7 @@ void Player::controlPanel() {
   int curHour = curMinutes / 60;
   curMinutes %= 60;
   double playback_progress=curSeconds*1./totalSeconds;
-  spdlog::debug("total: {}, progress: {}",totalSeconds,playback_progress);
+  // spdlog::debug("total: {}, progress: {}",totalSeconds,playback_progress);
   ImGui::Begin("ArcVP Control Panel");
 
   if (ImGui::Button("Pause/Unpause")) {
@@ -44,15 +59,15 @@ void Player::controlPanel() {
   }
   if (ImGui::Button("Slow Down")) {
 
-      // setPlaybackSpeed(getNextSpeedDown());
+      setPlaybackSpeed(getNextSpeedDown());
   }
   ImGui::SameLine();
   if (ImGui::Button("Speed Up")) {
 
-      // setPlaybackSpeed(getNextSpeedUp());
+      setPlaybackSpeed(getNextSpeedUp());
   }
   ImGui::SameLine();
-  ImGui::Text("Speed: %.2f", 1.0);
+  ImGui::Text("Speed: %.2f", speed);
   ImGui::ProgressBar(playback_progress);
   ImGui::Text("Playback Time: %02d:%02d:%02d / %02d:%02d:%02d", curHour,
               curMinutes, curSeconds, totalHour, totalMinutes, totalSeconds);

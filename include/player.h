@@ -61,7 +61,7 @@ class Player {
 
   int width = -1, height = -1;
 
-  double speed = 1.;
+  float speed = 1.;
 
   void packetDecodeThreadWorker();
 
@@ -78,6 +78,9 @@ class Player {
   AVFrame* decodeAudioFrame();
 
  public:
+
+  void setPlaybackSpeed(float);
+
   void controlPanel();
   AVFrame* getVideoFrame() {
     if (video_decode_worker_.output_queue.queue.empty()) {
@@ -159,8 +162,6 @@ class Player {
   void speedDown();
 
   void audioSyncTo(AVFrame* frame, int64_t played_ms);
-
-  std::int64_t getAudioPlayTime(std::int64_t bytesPlayed);
 
   std::tuple<int, int> getWH() { return std::make_tuple(width, height); }
   SyncState sync_state_{};
